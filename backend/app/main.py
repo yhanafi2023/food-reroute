@@ -10,6 +10,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware # controls whether front end is allowed to have comms with back
 
+"""
+Grab 4 settings:
+cors_origins - for front end websites and which are allowed to talk to the backend
+demo_mode - this determines if we are running the site in demo mode
+Run_scheduler - Determines whether background scheduled jobs should run
+scheduler_seconds - how often the schedular checks for work
+"""
+
 from app.config import CORS_ORIGIN_REGEX, CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS, check_secrets
 from app.idempotency import IdempotencyMiddleware
 from app.routes import (
