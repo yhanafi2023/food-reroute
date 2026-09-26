@@ -1,4 +1,4 @@
-"""Section 4: eligibility from the intake answers, explanations, volunteer equipment."""
+#Given this food donation, which organizations can recieve it, which can't, and can the system explain why/what happened
 from datetime import timedelta
 
 import pytest
