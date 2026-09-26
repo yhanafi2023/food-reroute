@@ -6,8 +6,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+#importing fastapi- web frame work.... 2nd for front seperate from back
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware # controls whether front end is allowed to have comms with back
 
 from app.config import CORS_ORIGIN_REGEX, CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS, check_secrets
 from app.idempotency import IdempotencyMiddleware
