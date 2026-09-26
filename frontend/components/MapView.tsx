@@ -4,7 +4,8 @@
 // keyless dark gray canvas basemap (CARTO's dark basemaps now require an API key).
 import L from "leaflet";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import type { CensusArea } from "@/lib/types";
 
 export type DriverState = "AVAILABLE" | "EN_ROUTE" | "ON_DELIVERY" | "OFFLINE";
 
@@ -28,6 +29,12 @@ export interface MapViewProps {
   chips?: string[];
   height?: number;
   fitKey?: string;
+  /** Census tracts for the community-need choropleth (components/CommunityNeedLayer). */
+  communityNeed?: CensusArea[];
+  /** Uncontrolled by default (off, with its own toggle button); pass to control it externally. */
+  showCommunityNeed?: boolean;
+  onToggleCommunityNeed?: (show: boolean) => void;
+  onSelectArea?: (area: CensusArea) => void;
 }
 
 const COLORS = {
@@ -180,10 +187,48 @@ function RouteLine({ route }: { route: MapRoute }) {
   );
 }
 
+// A subtle geographic overlay, not a heatmap: opacity (not an alarming red-to-green hue)
+// scales with the Census-measured poverty rate, on the app's own blue/cyan palette, so it
+// reads as "the network's supporting intelligence" rather than "a map of poor neighborhoods".
+const NEED_FILL = { low: "#1e3a5f", moderate: "var(--accent)", high: "#0891b2", very_high: "var(--cyan)" };
+
+function ringToLatLng(ring: number[][]): [number, number][] {
+  return ring.map(([lng, lat]) => [lat, lng]);
+}
+
+function CommunityNeedLayer({ areas, onSelectArea }: { areas: CensusArea[]; onSelectArea?: (a: CensusArea) => void }) {
+  return (
+    <>
+      {areas.map((a) => {
+        const positions = a.geometry.type === "Polygon"
+          ? (a.geometry.coordinates as number[][][]).map(ringToLatLng)
+          : (a.geometry.coordinates as number[][][][]).map((poly) => poly.map(ringToLatLng));
+        return (
+          <Polygon key={a.geoid} positions={positions}
+            pathOptions={{
+              color: NEED_FILL[a.bucket], weight: 1, opacity: 0.25,
+              fillColor: NEED_FILL[a.bucket], fillOpacity: 0.06 + a.community_need_score * 0.22,
+            }}
+            eventHandlers={onSelectArea ? { click: () => onSelectArea(a) } : undefined}>
+            <Tooltip direction="top" sticky>
+              <strong>{a.bucket_label} community need</strong>
+              <div>{a.poverty_rate.toFixed(1)}% below the poverty line (Census tract estimate)</div>
+            </Tooltip>
+          </Polygon>
+        );
+      })}
+    </>
+  );
+}
+
 export default function MapView({
   restaurants = [], drivers = [], organizations = [], prospects = [], reference = null, selectedId = null, onSelect,
   routes = [], movers = [], chips = [], height = 380, fitKey,
+  communityNeed = [], showCommunityNeed, onToggleCommunityNeed, onSelectArea,
 }: MapViewProps) {
+  const [internalShow, setInternalShow] = useState(false);
+  const show = showCommunityNeed ?? internalShow;
+  const toggle = () => (onToggleCommunityNeed ? onToggleCommunityNeed(!show) : setInternalShow((s) => !s));
   const allPoints = useMemo<[number, number][]>(
     () => [
       ...restaurants.map((p) => [p.lat, p.lng] as [number, number]),
@@ -213,6 +258,8 @@ export default function MapView({
           />
         )}
         <FitBounds points={allPoints} fitKey={key} />
+
+        {show && communityNeed.length > 0 && <CommunityNeedLayer areas={communityNeed} onSelectArea={onSelectArea} />}
 
         {routes.map((r) => <RouteLine key={r.id} route={r} />)}
         {routes.flatMap((r) =>
@@ -253,11 +300,28 @@ export default function MapView({
           {chips.map((c) => <span key={c} className="chip chip-accent">{c}</span>)}
         </div>
       )}
-      <div className="absolute bottom-2 left-2 z-[1000] flex flex-wrap gap-3 rounded-md border border-line bg-panel/90 px-3 py-1.5 text-xs font-semibold text-ink-2 backdrop-blur">
+      {communityNeed.length > 0 && (
+        <button type="button" onClick={toggle}
+          className={`absolute right-2 z-[1000] chip ${show ? "chip-accent" : ""}`} style={{ top: chips.length > 0 ? 40 : 8 }}
+          aria-pressed={show}>
+          Community Need: {show ? "ON" : "OFF"}
+        </button>
+      )}
+      <div className="absolute bottom-2 left-2 z-[1000] flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-line bg-panel/85 px-2.5 py-1 text-xs text-ink-2 backdrop-blur"
+        title="Community need: Census-tract poverty rate, low to very high. FoodFlow visualization buckets, not official Census categories. Source: 2024 ACS 5-Year Estimates.">
         {restaurants.length > 0 && <Legend color={COLORS.restaurant} label="Restaurant" />}
-        {prospects.length > 0 && <Legend color={COLORS.prospect} label="Researched prospect, not a partner" ring />}
-        {(drivers.length > 0 || movers.length > 0) && <Legend color={DRIVER_COLOR.EN_ROUTE} label="Driver, live" />}
+        {prospects.length > 0 && <Legend color={COLORS.prospect} label="Prospect" ring />}
+        {(drivers.length > 0 || movers.length > 0) && <Legend color={DRIVER_COLOR.EN_ROUTE} label="Driver" />}
         {organizations.length > 0 && <Legend color={COLORS.org} label="Organization" />}
+        {show && communityNeed.length > 0 && (
+          <>
+            <span className="h-3 w-px bg-line" aria-hidden />
+            <Legend color={NEED_FILL.low} label="Low" />
+            <Legend color={NEED_FILL.moderate} label="Mod." />
+            <Legend color={NEED_FILL.high} label="High" />
+            <Legend color={NEED_FILL.very_high} label="V.High need" />
+          </>
+        )}
       </div>
     </div>
   );

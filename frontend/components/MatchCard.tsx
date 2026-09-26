@@ -1,105 +1,50 @@
 "use client";
-import FlowMap from "./FlowMap";
+import DeliveryMap from "./DeliveryMap";
 import WhyThisMatch from "./WhyThisMatch";
-import { miles, minutes, minutesUntil } from "@/lib/format";
-import type { Match, Rescue } from "@/lib/types";
+import { minutesUntil, shortDuration } from "@/lib/format";
+import type { MatchingExplanation, Rescue, Trip } from "@/lib/types";
 
-export function matchMapProps(match: Match, rescue: Pick<Rescue, "restaurant_name" | "lat" | "lng">) {
-  return {
-    restaurants: [{ id: "r", lat: rescue.lat, lng: rescue.lng, label: rescue.restaurant_name, detail: "Pickup" }],
-    drivers: [{ id: `d${match.driver.id}`, lat: match.driver.lat, lng: match.driver.lng, label: match.driver.name, detail: "Matched driver" }],
-    organizations: match.stops.map((s) => ({ id: `o${s.organization_id}`, lat: s.lat, lng: s.lng, label: s.name, detail: `${s.meals} meals` })),
-    routes: [{
-      id: `m${match.id ?? "new"}`,
-      geometry: [[match.driver.lat, match.driver.lng], [rescue.lat, rescue.lng], ...match.stops.map((s) => [s.lat, s.lng] as [number, number])] as [number, number][],
-      stops: match.stops.map((s) => ({ lat: s.lat, lng: s.lng, label: s.name })),
-    }],
-    chips: [miles(match.pickup_miles + match.dropoff_miles), `ETA ${minutes(match.eta_minutes)}`],
-  };
-}
-
-// >=20 min of slack: comfortable. 10-19: tight but workable. Under 10 (or negative): at risk.
 function marginClass(margin: number) {
   if (margin >= 20) return "is-good";
   if (margin >= 10) return "is-warn";
   return "is-bad";
 }
 
-export default function MatchCard({ match, rescue, showMap = true }: {
-  match: Match; rescue: Pick<Rescue, "restaurant_name" | "lat" | "lng" | "meals" | "pickup_deadline">; showMap?: boolean;
+export default function MatchCard({ rescue, trip, explanation, showMap = true }: {
+  rescue: Rescue; trip: Trip; explanation: MatchingExplanation | null; showMap?: boolean;
 }) {
-  const foodDeadline = Math.max(0, minutesUntil(rescue.pickup_deadline));
-  const pickupEta = match.pickup_eta_minutes ?? match.eta_minutes;
+  const pickupEta = Math.max(0, minutesUntil(trip.eta_pickup));
+  const foodDeadline = Math.max(0, minutesUntil(rescue.safe_until));
   const safetyMargin = Math.round(foodDeadline - pickupEta);
-  const singleStop = match.stops.length === 1;
+  const chosenOrgIds = new Set(trip.stops.map((s) => s.organization.id));
+  const carrierName = trip.carrier.type === "volunteer" ? trip.carrier.first_name : trip.carrier.label;
+  const etaShown = shortDuration(pickupEta);
+  const marginShown = shortDuration(Math.abs(safetyMargin));
 
   return (
-    <section className="flex flex-col gap-4 match-card-enter" aria-label="Match found">
-      <div className="panel panel-accent flex flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="eyebrow inline-flex items-center gap-2" style={{ color: "var(--good)" }}>
-            <i aria-hidden className="inline-block h-2 w-2 rounded-full bg-good" />
-            Match found
-          </span>
-          {match.eta_range_minutes && (
-            <span className="chip" title={match.eta_source === "ml" ? "ML ETA from real road-network data (OSRM, OpenStreetMap), no live traffic" : "Rule-of-thumb ETA"}>
-              likely {Math.round(match.eta_range_minutes[0])} to {Math.round(match.eta_range_minutes[1])} min
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-baseline gap-2">
-          <span className="stat-value" style={{ fontSize: "var(--t-3xl)" }}>{rescue.meals}</span>
-          <span className="eyebrow">Meals</span>
-        </div>
-
-        <div className="match-flow" aria-label="Route">
-          <div className="match-flow-node is-restaurant">
-            <span className="match-flow-icon" aria-hidden>🍽️</span>
-            <div className="match-flow-body">
-              <span className="match-flow-name uppercase">{rescue.restaurant_name}</span>
-              <span className="chip">Pickup</span>
-            </div>
-          </div>
-          <div className="match-flow-arrow" aria-hidden />
-          <div className="match-flow-node is-driver">
-            <span className="match-flow-icon" aria-hidden>🚗</span>
-            <div className="match-flow-body">
-              <span className="match-flow-name">{match.driver.name}</span>
-              <span className="chip chip-accent">{miles(match.pickup_miles)} away</span>
-            </div>
-          </div>
-          {match.stops.map((s, i) => (
-            <div key={`${s.organization_id}-${i}`}>
-              <div className="match-flow-arrow" aria-hidden />
-              <div className="match-flow-node is-org">
-                <span className="match-flow-icon" aria-hidden>🏢</span>
-                <div className="match-flow-body">
-                  <span className="match-flow-name">{s.name}</span>
-                  <span className="chip chip-good">{s.meals} meals{singleStop ? ` · ${miles(match.dropoff_miles)}` : ""}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="match-metric-row">
-          <div className="match-metric">
-            <span className="eyebrow">ETA</span>
-            <span className="match-metric-value">{Math.round(match.eta_minutes)}<span className="text-sm font-semibold text-ink-3"> min</span></span>
-          </div>
-          <div className="match-metric">
-            <span className="eyebrow">Food deadline</span>
-            <span className="match-metric-value">{foodDeadline}<span className="text-sm font-semibold text-ink-3"> min</span></span>
-          </div>
-          <div className={`match-metric ${marginClass(safetyMargin)}`}>
-            <span className="eyebrow">Safety margin</span>
-            <span className="match-metric-value">{safetyMargin}<span className="text-sm font-semibold text-ink-3"> min</span></span>
-          </div>
-        </div>
+    <section className="flex flex-col gap-3 match-card-enter" aria-label="Match found">
+      {/* One thin summary line -- the map below is the point. */}
+      <div className="panel panel-tight panel-accent flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span className="eyebrow inline-flex items-center gap-2" style={{ color: "var(--good)" }}>
+          <i aria-hidden className="inline-block h-2 w-2 rounded-full bg-good" />
+          Match found
+        </span>
+        <strong>{rescue.est_meals} meals</strong>
+        <span className="text-ink-2">{rescue.restaurant.name} → {carrierName} → {trip.stops.map((s) => s.organization.name).join(", ")}</span>
+        <span className="ml-auto flex flex-wrap gap-2 text-xs text-ink-3">
+          <span>ETA {etaShown.value}{etaShown.unit}</span>
+          <span className={marginClass(safetyMargin) === "is-bad" ? "text-bad" : undefined}>margin {marginShown.value}{marginShown.unit}</span>
+        </span>
       </div>
-      {showMap && <FlowMap {...matchMapProps(match, rescue)} height={320} />}
-      <WhyThisMatch candidates={match.top_candidates} reasons={match.reasons} />
+      {showMap && <DeliveryMap rescue={rescue} trip={trip} height={480} />}
+      {explanation && explanation.eligible.length > 0 && (
+        <details className="panel panel-tight">
+          <summary className="cursor-pointer select-none text-sm font-semibold text-ink-2">Why this match? ({explanation.eligible.length} organization{explanation.eligible.length === 1 ? "" : "s"} considered)</summary>
+          <div className="pt-3">
+            <WhyThisMatch candidates={explanation.eligible} chosenOrgIds={chosenOrgIds} />
+          </div>
+        </details>
+      )}
     </section>
   );
 }

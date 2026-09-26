@@ -1,58 +1,54 @@
-import type { Breakdown, Candidate } from "@/lib/types";
+import type { EligibleOrg } from "@/lib/types";
 
-const TERMS: { key: keyof Breakdown; label: string; explain: string }[] = [
-  { key: "distance", label: "Distance", explain: "Miles to the restaurant plus the drop off route" },
-  { key: "eta", label: "ETA", explain: "Minutes door to door (x0.1)" },
-  { key: "urgency", label: "Urgency", explain: "Extra weight on ETA as the pickup deadline gets close" },
-  { key: "demand_fit", label: "Demand fit", explain: "Share of meals that meet a real open need" },
-  { key: "priority", label: "Priority", explain: "HIGH and MEDIUM need organizations served" },
-];
+const BUCKET_CLASS: Record<string, string> = {
+  low: "", moderate: "", high: "chip-warn", very_high: "chip-bad",
+};
 
-// Diverging bars around zero: costs (raise the score) extend right, bonuses (lower it) extend left.
-// Lower total score wins. Every bar also prints its signed value, so color is never the only cue.
-export default function WhyThisMatch({ candidates, reasons }: { candidates: Candidate[]; reasons?: string[] }) {
+// Diverging bars: each named component (distance/urgency/demand/capacity/community need)
+// is already normalized to [0, 1], so every candidate's bar uses the same scale.
+export default function WhyThisMatch({ candidates, chosenOrgIds }: { candidates: EligibleOrg[]; chosenOrgIds: Set<number> }) {
   if (!candidates.length) return null;
-  const scale = Math.max(1, ...candidates.flatMap((c) => TERMS.map((t) => Math.abs(c.breakdown[t.key]))));
+  const ranked = [...candidates].sort((a, b) => a.rank - b.rank);
+  const TERMS: { key: keyof EligibleOrg["score"]; label: string }[] = [
+    { key: "distance_score", label: "Distance" },
+    { key: "urgency_score", label: "Urgency" },
+    { key: "demand_score", label: "Demand fit" },
+    { key: "capacity_score", label: "Capacity" },
+    { key: "community_need_score", label: "Community need" },
+  ];
   return (
-    <section className="panel flex flex-col gap-4" aria-labelledby="why-title">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 id="why-title">Why this match?</h3>
-        <span className="text-sm text-ink-3">Top {candidates.length} options. Lower score wins.</span>
-      </div>
+    <section className="flex flex-col gap-3" aria-label="Why this match">
       <div className="flex flex-col gap-3">
-        {candidates.map((c, idx) => {
-          const winner = idx === 0;
+        {ranked.map((c) => {
+          const chosen = chosenOrgIds.has(c.organization_id);
+          const need = c.score.community_need;
           return (
-            <article key={`${c.driver_name}-${idx}`}
-              className={`flex flex-col gap-3 rounded-lg border p-4 ${winner ? "border-accent bg-wash" : "border-line"}`}
-              aria-label={`Option ${idx + 1}: ${c.driver_name}, score ${c.score.toFixed(1)}${winner ? ", chosen" : ""}`}>
+            <article key={c.organization_id}
+              className={`flex flex-col gap-3 rounded-lg border p-4 ${chosen ? "border-accent bg-wash" : "border-line"}`}
+              aria-label={`${chosen ? "Chosen: " : ""}${c.name}, score ${c.score.total.toFixed(2)}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className={`chip ${winner ? "chip-accent" : ""}`}>{winner ? "CHOSEN" : `OPTION ${idx + 1}`}</span>
-                  <strong>{c.driver_name}</strong>
+                  <span className={`chip ${chosen ? "chip-accent" : ""}`}>{chosen ? "CHOSEN" : `#${c.rank}`}</span>
+                  <strong>{c.name}</strong>
+                  {need && <span className={`chip ${BUCKET_CLASS[need.bucket]}`}>{need.bucket_label} community need</span>}
                 </div>
-                <span className="mono num text-sm font-bold">score {c.score.toFixed(1)}</span>
+                <span className="mono num text-sm font-bold">score {c.score.total.toFixed(2)}</span>
               </div>
-              <p className="text-sm text-ink-2">{c.stops_summary}</p>
-              <div className="grid gap-1" role="table" aria-label={`Score breakdown for ${c.driver_name}`}>
+              {c.why.length > 0 && (
+                <ul className="flex flex-col gap-1 text-sm">
+                  {c.why.map((w) => <li key={w} className="flex gap-2"><span aria-hidden className="text-good">✓</span>{w}</li>)}
+                </ul>
+              )}
+              <div className="grid gap-1" role="table" aria-label={`Score breakdown for ${c.name}`}>
                 {TERMS.map((t) => {
-                  const v = c.breakdown[t.key];
-                  const width = `${(Math.abs(v) / scale) * 50}%`;
-                  const cost = v > 0;
+                  const v = c.score[t.key] as number;
                   return (
-                    <div key={t.key} role="row" className="grid grid-cols-[96px_1fr_88px] items-center gap-2 text-sm" title={`${t.label}: ${t.explain}`}>
+                    <div key={t.key} role="row" className="grid grid-cols-[112px_1fr_48px] items-center gap-2 text-sm">
                       <span role="rowheader" className="text-ink-2">{t.label}</span>
-                      <span role="cell" className="relative h-3" aria-hidden>
-                        <span className="absolute inset-y-0 left-1/2 w-px bg-ink-3" />
-                        {v !== 0 && (
-                          <span className="absolute inset-y-0 rounded"
-                            style={{ width, left: cost ? "calc(50% + 2px)" : undefined, right: cost ? undefined : "calc(50% + 2px)",
-                              background: cost ? "var(--ink-3)" : "var(--cyan)" }} />
-                        )}
+                      <span role="cell" className="relative h-3 rounded bg-wash" aria-hidden>
+                        <span className="absolute inset-y-0 left-0 rounded bg-cyan" style={{ width: `${v * 100}%` }} />
                       </span>
-                      <span role="cell" className="mono num text-right text-xs text-ink-2">
-                        {v > 0 ? "+" : ""}{v.toFixed(1)} {v === 0 ? "" : cost ? "cost" : "bonus"}
-                      </span>
+                      <span role="cell" className="mono num text-right text-xs text-ink-2">{v.toFixed(2)}</span>
                     </div>
                   );
                 })}
@@ -61,11 +57,6 @@ export default function WhyThisMatch({ candidates, reasons }: { candidates: Cand
           );
         })}
       </div>
-      {reasons && reasons.length > 0 && (
-        <ul className="flex flex-col gap-1 text-sm">
-          {reasons.map((r) => <li key={r} className="flex gap-2"><span aria-hidden className="text-accent">●</span>{r}</li>)}
-        </ul>
-      )}
     </section>
   );
 }

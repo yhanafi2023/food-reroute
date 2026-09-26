@@ -1,9 +1,7 @@
-// Typed fetch wrapper: attaches the JWT, throws readable errors, and serves mocks
-// when NEXT_PUBLIC_USE_MOCKS=true so frontend work never waits on the backend.
-import { mockRequest } from "./mock";
-
+// Typed fetch wrapper: attaches the JWT and throws readable errors. Talks to the real
+// FastAPI backend; DEMO_MODE there seeds deterministic demo accounts and history
+// (backend/app/seed.py) so there is no separate frontend mock layer to keep in sync.
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 const TOKEN_KEY = "foodflow_token";
 
 export class ApiError extends Error {
@@ -54,8 +52,6 @@ export function isAbort(e: unknown): boolean {
 // Every request also times out after REQUEST_TIMEOUT_MS so a dead connection never hangs the UI.
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const method = options.method ?? "GET";
-  if (USE_MOCKS) return mockRequest<T>(method, path, options.body);
-
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;

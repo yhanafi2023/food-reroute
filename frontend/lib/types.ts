@@ -1,70 +1,111 @@
-// Mirrors the backend contract objects exactly (snake_case, ISO times in UTC).
+// Mirrors the real backend contract exactly (app/views.py, app/auth.py, app/routes/*.py).
+// snake_case, ISO times in UTC ("...Z"). See backend/app/models.py for the source of truth.
 
-export type Role = "RESTAURANT" | "DRIVER" | "ORGANIZATION" | "ADMIN";
-export type Level = "LOW" | "MEDIUM" | "HIGH";
+export type Role = "restaurant_staff" | "restaurant_manager" | "volunteer" | "org_staff" | "org_manager" | "admin";
+export const RESTAURANT_ROLES: Role[] = ["restaurant_staff", "restaurant_manager"];
+export const ORG_ROLES: Role[] = ["org_staff", "org_manager"];
+
 export type RescueStatus =
-  | "OPEN" | "MATCHED" | "ACCEPTED" | "PICKED_UP" | "DELIVERED" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
-export type DeliveryStatus =
-  | "HEADING_TO_RESTAURANT" | "ARRIVED_AT_RESTAURANT" | "PICKED_UP" | "DELIVERING" | "DELIVERED" | "CONFIRMED";
+  | "posted" | "matched" | "en_route_pickup" | "picked_up" | "en_route_dropoff" | "delivered" | "received"
+  | "cancelled" | "expired" | "rejected" | "reassigned";
+export type TripStatus = RescueStatus;
+export type TripMode = "volunteer" | "waymo_sim" | "robot_sim";
+export type StopStatus = "pending" | "delivered" | "received" | "rejected" | "rerouted" | "cancelled";
+export type FoodCategory = "hot" | "cold" | "frozen" | "shelf_stable";
+export type FoodUnit = "individual_meal" | "bag" | "box" | "tray" | "half_pan" | "full_pan";
 
-export interface Location { lat: number; lng: number }
-
-export interface User { id: number; name: string; email: string; role: Role }
+export interface User { id: number; email: string; name: string; first_name: string; role: Role; organization_id: number | null }
 export interface AuthResponse { token: string; user: User }
 
-export interface Rescue {
-  id: number; restaurant_id: number; restaurant_name: string; food_type: string; meals: number;
-  weight_lbs: number; pickup_address: string; lat: number; lng: number; pickup_deadline: string;
-  time_sensitivity: Level; description: string; status: RescueStatus; created_at?: string;
+// ---------- community need (Census) ----------
+
+export type NeedBucket = "low" | "moderate" | "high" | "very_high";
+
+export interface CensusArea {
+  geoid: string; name: string; poverty_rate: number; margin_of_error_pct: number; population: number;
+  population_below_poverty: number; bucket: NeedBucket; bucket_label: string; community_need_score: number;
+  geometry: { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][] };
 }
 
-export interface Need {
-  id: number; organization_id: number; organization_name: string; meals_needed: number;
-  meals_fulfilled: number; preferred_food: string; deadline: string; priority: Level;
-  status: "OPEN" | "FULFILLED"; lat?: number; lng?: number;
+export interface CommunityNeedAreas {
+  source: string; disclaimer: string;
+  legend: { bucket: NeedBucket; label: string; poverty_rate_range: string }[];
+  areas: CensusArea[];
 }
 
-export interface Breakdown { distance: number; eta: number; urgency: number; demand_fit: number; priority: number }
-export interface Candidate { driver_name: string; stops_summary: string; score: number; breakdown: Breakdown }
+export interface OrgCommunityNeed {
+  organization_id: number; name: string; community_need: Omit<CensusArea, "geometry"> & { source: string } | null;
+  disclaimer: string;
+  requested_food: { meals_committed_today: number; current_need: number | null; typical_nightly_need: number | null };
+}
+
+// ---------- matching / scoring ----------
+
+export interface ScoreBreakdown {
+  distance_score: number; urgency_score: number; demand_score: number; capacity_score: number;
+  community_need_score: number; total: number;
+  community_need: Omit<CensusArea, "geometry"> & { source: string } | null;
+}
+
+export interface EligibleOrg { organization_id: number; name: string; estimated_arrival: string | null; score: ScoreBreakdown; why: string[]; rank: number }
+export interface IneligibleOrg { organization_id: number; name: string; reasons: { code: string; text: string }[]; groups: string[]; estimated_arrival: string | null }
+
+export interface MatchingExplanation {
+  rescue_id: number; attempt: number; status: RescueStatus; weights_used: "standard" | "community_need_priority";
+  matching_weights: Record<string, number>;
+  eligible: EligibleOrg[]; ineligible: IneligibleOrg[];
+  trips: { id: number; mode: TripMode; simulated: boolean; mode_reason: string; status: TripStatus }[];
+}
+
+export interface MatchResult { matched: boolean; reason?: string; attempt?: number; trips?: number[]; estimated?: boolean }
+
+// ---------- rescues / trips / stops ----------
+
+export interface RestaurantRef { id: number; name: string; address: string; lat: number; lng: number }
+export interface OrganizationRef { id: number; name: string; address: string; lat: number; lng: number }
+
+export interface Carrier {
+  type: "volunteer" | TripMode; simulated: boolean;
+  first_name?: string; vehicle?: string; contact?: string; user_id?: number; email?: string;
+  vehicle_id?: string; label?: string;
+}
 
 export interface Stop {
-  need_id?: number; organization_id: number; name: string; lat: number; lng: number; meals: number; confirmed?: boolean;
+  id: number; seq: number; organization: OrganizationRef; allocated_meals: number; status: StopStatus;
+  eta: string | null; delivered_at: string | null; received_at: string | null; received_meals: number | null;
+  condition: "accepted" | "partially_accepted" | "rejected" | null; reject_reason: string | null;
+  temperature_f: number | null; incomplete_fields: string[];
+  receiving_instructions?: string; curb_location?: string; receiving_contact?: { name: string; phone: string } | null;
+  dropoff_code?: string; received_by_name?: string; photo_url?: string; meals_served?: number | null;
 }
 
-export interface Match {
-  id: number | null; rescue_id: number; driver: { id: number; name: string; lat: number; lng: number };
-  stops: Stop[]; pickup_miles: number; dropoff_miles: number; eta_minutes: number; score: number;
-  reasons: string[]; top_candidates: Candidate[]; status?: string;
-  eta_range_minutes?: [number, number]; pickup_eta_minutes?: number | null; eta_source?: "ml" | "rule";
+export interface Trip {
+  id: number; rescue_id: number; mode: TripMode; simulated: boolean; status: TripStatus;
+  handoff_state: string | null; mode_reason: string; estimated: boolean; eta_pickup: string;
+  load_deadline: string | null; unload_deadline: string | null; picked_up_meals: number | null;
+  started_at: string | null; finished_at: string | null; carrier: Carrier; stops: Stop[];
 }
 
-export interface EtaRange { p10: number; p50: number; p90: number }
-
-export interface RouteLeg {
-  from: [number, number]; to: [number, number]; geometry: [number, number][]; distance_miles: number;
-  source: "mapbox" | "osrm" | "offline"; eta: EtaRange; eta_source: "ml" | "rule";
+export interface Rescue {
+  id: number; status: RescueStatus; is_draft: boolean; is_fictional: boolean; restaurant: RestaurantRef;
+  quantity: number; unit: FoodUnit; est_meals: number; meals_per_unit_assumption: number; category: FoodCategory;
+  description: string; prepared_at: string | null; allergens: string[] | null; allergens_declared: boolean;
+  dietary_tags: string[]; safe_until: string; pickup_deadline: string; pickup_instructions: string;
+  attested_by: number | null; attested_at: string | null; duplicate_of: number | null; created_at: string;
+  requeue_count: number; quantities: { posted_meals: number; picked_up_meals: number | null; received_meals: number | null };
+  trips: Trip[];
+  pickup_code?: string; cancel_reason?: string; fmv_per_meal?: number | null; cost_basis_per_meal?: number | null;
 }
 
-export interface Route {
-  geometry: [number, number][]; distance_miles: number; eta_minutes: number; source: "mapbox" | "osrm" | "offline";
-  legs?: RouteLeg[]; ml_eta_minutes?: number;
+export interface QuickPostBody {
+  quantity: number; unit: FoodUnit; category: FoodCategory; pickup_deadline: string; attested: boolean;
+  description?: string; prepared_at?: string; allergens?: string[]; dietary_tags?: string[];
+  pickup_instructions?: string; safe_until?: string; fmv_per_meal?: number; cost_basis_per_meal?: number;
 }
 
-export interface Tracking {
-  delivery_id: number; status: DeliveryStatus;
-  driver: { name: string; position: Location; position_source: "gps" | "estimated" | "status"; gps_updated_at: string | null };
-  target: { kind: "pickup" | "dropoff"; name: string; lat: number; lng: number };
-  eta: (EtaRange & { arrival_at: string; source: "ml" | "rule" }) | null;
-  note: string | null; computed_at: string; labels: string;
-}
+export interface CreateRescueResponse { rescue: Rescue; warnings: string[]; matching: MatchResult }
 
-export interface Delivery {
-  id: number; rescue_id: number; match_id: number; driver_id: number; driver_name: string;
-  driver_location: Location; status: DeliveryStatus; meals: number; weight_lbs: number; route: Route;
-  restaurant: { id: number; name: string; lat: number; lng: number; address: string }; food_type: string;
-  stops: Stop[]; status_history: { status: DeliveryStatus; at: string }[]; eta_minutes: number;
-  accepted_at: string; delivered_at: string | null; is_demo_seed: boolean;
-}
+// ---------- dashboards ----------
 
 export interface Impact {
   meals_rescued: number; lbs_diverted: number; deliveries_completed: number; restaurants: number;
@@ -72,56 +113,31 @@ export interface Impact {
   includes_demo_data: boolean;
 }
 
-export interface Place { id: number; name: string; lat: number; lng: number; address?: string }
-export interface Restaurant extends Place { food_category: string; seats: number }
-export interface Driver extends Place { is_available: boolean; capacity_meals: number; vehicle: string }
-export interface Organization extends Place { org_type: string }
+export interface VolunteerTrips { offers: Trip[]; active: Trip[]; history: Trip[] }
+export interface OrgDeliveryItem { stop: Stop; rescue: Rescue }
+export interface OrgDeliveries { incoming: OrgDeliveryItem[]; to_confirm: OrgDeliveryItem[]; history: OrgDeliveryItem[] }
 
-export interface RescueDetail { rescue: Rescue; match: Match | null; delivery: Delivery | null }
-export interface CreateRescueResponse { rescue: Rescue; match: Match | null }
-
-export interface RestaurantDashboard {
-  restaurant: Restaurant;
-  stats: { active: number; completed: number; meals_donated: number; lbs_diverted: number };
-  rescues: RescueDetail[];
+export interface NetworkRestaurant { id: number; name: string; address: string; lat: number; lng: number; is_fictional: boolean }
+export interface NetworkOrganization extends NetworkRestaurant {
+  onboarding_complete: boolean; typical_nightly_need: number | null; current_need: number | null;
+  community_need: Omit<CensusArea, "geometry"> & { source: string } | null;
+}
+export interface NetworkVolunteer {
+  id: number; name: string; first_name: string; vehicle: string; capacity_meals: number; lat: number; lng: number;
+  position_is_live: boolean; on_active_trip: boolean; available_now: boolean;
 }
 
-export interface DriverDashboard {
-  driver: Driver; offer: { rescue: Rescue; match: Match } | null; active_delivery: Delivery | null;
-  completed: Delivery[]; total_meals_moved: number;
-}
-
-export interface IncomingDelivery {
-  delivery: Delivery; my_meals: number; my_stop_number: number; confirmed: boolean; can_confirm: boolean;
-}
-
-export interface OrganizationDashboard {
-  organization: Organization; needs: Need[]; incoming: IncomingDelivery[]; received: IncomingDelivery[];
-  meals_received: number;
-}
-
-export interface Network {
-  restaurants: Restaurant[]; drivers: Driver[]; organizations: Organization[]; needs: Need[];
-  rescues: RescueDetail[]; deliveries: Delivery[];
-  stats: { open_rescues: number; active_deliveries: number; available_drivers: number; open_needs: number };
+export interface AdminNetwork {
+  restaurants: NetworkRestaurant[]; organizations: NetworkOrganization[]; volunteers: NetworkVolunteer[];
+  active_rescues: Rescue[]; active_trips: Trip[];
+  stats: { open_rescues: number; active_trips: number; available_volunteers: number; total_volunteers: number };
   impact: Impact;
 }
 
-export interface ForecastRow { restaurant: string; probability: number }
-export interface Forecast {
-  available: boolean; forecast: ForecastRow[]; label: string; reason?: string; logged_days?: number; needed_days?: number;
-}
+export interface Assumption { value: unknown; kind: "assumption" | "cited"; note?: string; source?: string }
+export type Assumptions = Record<string, Assumption>;
 
-export interface EtaInfo {
-  model: string;
-  metrics: {
-    mae_minutes: Record<string, number>; chosen: string; p10_p90_coverage: number; p10_p90_coverage_before_calibration: number;
-    calibration_widen_minutes: number; test_mean_minutes: number; n_train_pairs: number; n_real_trips: number; n_test_pairs: number;
-  };
-  data: { source: string; map_data: string; fetched: string; pairs: number; limitations: string; real_trips_used: number };
-  handling_minutes_per_stop: number; assumptions: string[]; note: string; trained_at: string;
-  logged_legs: number; usable_real_legs: number; real_leg_mae_minutes: number | null; real_leg_rule: string;
-}
+// ---------- surplus log / prospects (unchanged: app/routes/prospects.py matches this shape) ----------
 
 export type EvidenceStrength = "measured" | "documented_donation" | "marketplace_listing" | "none_found";
 
@@ -170,20 +186,4 @@ export interface Opportunities {
   ranked: Opportunity[];
   not_ranked: { id: string; name: string; kind: string; reason: string; evidence_strength: EvidenceStrength; miles_from_fiu: number }[];
   method: string;
-}
-export interface ModelInfo {
-  model_name: string; roc_auc: number; roc_auc_by_model: Record<string, number>; accuracy: number;
-  n_train: number; n_test: number; test_period_start: string; features: string[]; trained_at: string;
-  data: string; note: string;
-}
-
-export type SimEvent =
-  | { t_ms: number; clock: string; type: "rescue_posted"; rescue: { id: number; restaurant_name: string; meals: number; lat: number; lng: number; food_type: string; pickup_deadline: string } }
-  | { t_ms: number; clock: string; type: "matched"; rescue_id: number; driver: { id: number; name: string; lat: number; lng: number }; stops: Stop[]; route: Route; reasons: string[]; eta_minutes: number; eta_range_minutes?: [number, number]; duration_ms: number }
-  | { t_ms: number; clock: string; type: "delivered"; rescue_id: number; driver_id: number; restaurant_name: string; meals: number; stops: { name: string; meals: number }[]; minutes: number; impact: { meals_rescued: number; lbs_diverted: number; deliveries_completed: number } }
-  | { t_ms: number; clock: string; type: "unmatched"; rescue_id: number; reason: string };
-
-export interface Simulation {
-  label: string; seed: number; duration_ms: number; start_clock: string; end_clock: string; events: SimEvent[];
-  summary: { meals_rescued: number; lbs_diverted: number; deliveries_completed: number; restaurants: number; organizations: number; rescues_posted: number };
 }

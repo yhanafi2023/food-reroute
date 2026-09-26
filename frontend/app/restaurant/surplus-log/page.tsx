@@ -7,7 +7,7 @@ import { usePoll } from "@/lib/usePoll";
 import { useState } from "react";
 
 export default function RestaurantSurplusLogPage() {
-  const user = useRequireRole("RESTAURANT");
+  const user = useRequireRole(["restaurant_staff", "restaurant_manager"]);
   const { data, error, refresh } = usePoll<SurplusLogPayload>(user ? "/restaurants/me/surplus-log" : null, 30000);
   const [saved, setSaved] = useState<SurplusLogPayload | null>(null);
   if (!user) return null;

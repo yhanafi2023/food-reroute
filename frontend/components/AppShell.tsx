@@ -21,13 +21,24 @@ export function Brand({ light = false }: { light?: boolean }) {
 }
 
 const ROLE_LINKS: Record<Role, { href: string; label: string }[]> = {
-  RESTAURANT: [
+  restaurant_staff: [
     { href: "/restaurant/dashboard", label: "Dashboard" },
     { href: "/restaurant/surplus-log", label: "Surplus log" },
   ],
-  DRIVER: [{ href: "/driver/dashboard", label: "Dashboard" }],
-  ORGANIZATION: [{ href: "/organization/dashboard", label: "Dashboard" }],
-  ADMIN: [
+  restaurant_manager: [
+    { href: "/restaurant/dashboard", label: "Dashboard" },
+    { href: "/restaurant/surplus-log", label: "Surplus log" },
+  ],
+  volunteer: [{ href: "/volunteer/dashboard", label: "Dashboard" }],
+  org_staff: [
+    { href: "/organization/dashboard", label: "Dashboard" },
+    { href: "/organization/onboarding", label: "Onboarding" },
+  ],
+  org_manager: [
+    { href: "/organization/dashboard", label: "Dashboard" },
+    { href: "/organization/onboarding", label: "Onboarding" },
+  ],
+  admin: [
     { href: "/admin/dashboard", label: "Network" },
     { href: "/admin/prospects", label: "Prospects" },
   ],

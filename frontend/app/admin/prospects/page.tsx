@@ -20,7 +20,7 @@ function Unknown() {
 }
 
 export default function ProspectsPage() {
-  const user = useRequireRole("ADMIN");
+  const user = useRequireRole("admin");
   const [meta, setMeta] = useState<ProspectMeta | null>(null);
   const [items, setItems] = useState<Prospect[] | null>(null);
   const [total, setTotal] = useState(0);

@@ -1,31 +1,42 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { clock, number, until } from "@/lib/format";
-import type { OrganizationDashboard } from "@/lib/types";
+import { clock, number } from "@/lib/format";
+import type { OrgDeliveries, OrgDeliveryItem } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
-function localInput(hoursAhead: number) {
-  const d = new Date(Date.now() + hoursAhead * 3600000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function ReceiptForm({ item, busy, onSubmit }: {
+  item: OrgDeliveryItem; busy: boolean;
+  onSubmit: (condition: "accepted" | "partially_accepted" | "rejected", receivedMeals: number, note: string) => void;
+}) {
+  const [receivedMeals, setReceivedMeals] = useState(String(item.stop.allocated_meals));
+  const [note, setNote] = useState("");
+  const full = Number(receivedMeals) >= item.stop.allocated_meals;
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="field"><span>Meals actually received</span>
+        <input className="input num" type="number" min={0} max={item.stop.allocated_meals} value={receivedMeals} onChange={(e) => setReceivedMeals(e.target.value)} />
+      </label>
+      <label className="field"><span>Notes (only needed if rejecting or short)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></label>
+      <div className="grid grid-cols-2 gap-3">
+        <button className="btn btn-good btn-lg" disabled={busy}
+          onClick={() => onSubmit(full ? "accepted" : "partially_accepted", Number(receivedMeals), note)}>
+          Confirm receipt
+        </button>
+        <button className="btn btn-danger btn-lg" disabled={busy} onClick={() => onSubmit("rejected", 0, note)}>Reject</button>
+      </div>
+    </div>
+  );
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  HEADING_TO_RESTAURANT: "Driver heading to the restaurant",
-  ARRIVED_AT_RESTAURANT: "Driver at the restaurant",
-  PICKED_UP: "Food picked up",
-  DELIVERING: "On the way to you",
-  DELIVERED: "Delivered. Please confirm receipt",
-};
-
 export default function OrganizationDashboardPage() {
-  const user = useRequireRole("ORGANIZATION");
-  const { data, error, refresh, updatedAt } = usePoll<OrganizationDashboard>(user ? "/organizations/dashboard" : null);
-  const [form, setForm] = useState({ meals_needed: "25", preferred_food: "Any", deadline: localInput(6), priority: "MEDIUM" });
+  const user = useRequireRole(["org_staff", "org_manager"]);
+  const { data, error, refresh, updatedAt } = usePoll<OrgDeliveries>(user ? "/orgs/me/deliveries" : null);
+  const [need, setNeed] = useState("25");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
 
@@ -45,91 +56,71 @@ export default function OrganizationDashboardPage() {
     }
   }
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+  const mealsReceived = data?.history.reduce((sum, i) => sum + (i.stop.received_meals ?? 0), 0) ?? 0;
 
   return (
-    <AppShell title={data?.organization.name ?? "Organization"} subtitle="Post what you need. Confirm what arrives."
-      actions={<div className="flex flex-wrap items-center gap-2"><span className="chip">Fictional demo organization</span><LiveStatus updatedAt={updatedAt} error={error} /></div>}>
+    <AppShell title={user.name} subtitle="See what's on the way. Confirm what arrives."
+      actions={<div className="flex flex-wrap items-center gap-2"><LiveStatus updatedAt={updatedAt} error={error} /></div>}>
       <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {note && <div className={`alert ${note.kind === "good" ? "alert-good" : "alert-bad"}`} role="status">{note.text}</div>}
       {!data ? <Loading /> : (
         <>
           <section className="flex flex-col gap-3" aria-labelledby="incoming-title">
             <h2 id="incoming-title" style={{ fontSize: "var(--t-lg)" }}>Incoming deliveries</h2>
-            {data.incoming.length === 0 && <p className="panel text-ink-2">Nothing on the way right now. Matched deliveries appear here with a live map.</p>}
-            {data.incoming.map((item) => {
-              const d = item.delivery;
-              return (
-                <article key={d.id} className="panel panel-accent flex flex-col gap-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex flex-col gap-1">
-                      <strong className="text-xl" style={{ fontFamily: "var(--ff-display)" }}>{item.my_meals} meals incoming</strong>
-                      <span className="text-ink-2">Driver: {d.driver_name} · from {d.restaurant.name}</span>
-                      <span className="text-sm text-ink-3">{d.food_type} · you are stop {item.my_stop_number} of {d.stops.length}</span>
-                    </div>
-                    <span className={`chip ${d.status === "DELIVERED" ? "chip-good" : ""}`}>{STATUS_TEXT[d.status] ?? d.status}</span>
+            {data.incoming.length === 0 && data.to_confirm.length === 0 && (
+              <p className="panel text-ink-2">Nothing on the way right now. Matched deliveries appear here with a live map.</p>
+            )}
+            {[...data.to_confirm, ...data.incoming].map((item) => (
+              <article key={item.stop.id} className="panel panel-accent flex flex-col gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <strong className="text-xl" style={{ fontFamily: "var(--ff-display)" }}>{item.stop.allocated_meals} meals incoming</strong>
+                    <span className="text-ink-2">
+                      {item.rescue.trips[0]?.carrier.type === "volunteer" ? item.rescue.trips[0].carrier.first_name : item.rescue.trips[0]?.carrier.label} · from {item.rescue.restaurant.name}
+                    </span>
+                    <span className="text-sm text-ink-3">{item.rescue.category.replace("_", "-")} food · pickup by {clock(item.rescue.pickup_deadline)}</span>
                   </div>
-                  <DeliveryMap delivery={d} height={300} />
-                  <button className="btn btn-good btn-lg" disabled={busy || !item.can_confirm}
-                    onClick={() => act(() => api(`/deliveries/${d.id}/confirm`, { method: "POST" }), `Confirmed ${item.my_meals} meals. Thank you!`)}>
-                    {item.can_confirm ? `Confirm Receipt of ${item.my_meals} meals` : "Confirm Receipt (after the driver marks it delivered)"}
-                  </button>
-                </article>
-              );
-            })}
+                  <span className={`chip ${item.stop.status === "delivered" ? "chip-good" : ""}`}>{item.stop.status === "delivered" ? "Delivered, please confirm" : "on the way"}</span>
+                </div>
+                {item.rescue.trips[0] && <DeliveryMap rescue={item.rescue} trip={item.rescue.trips[0]} height={280} />}
+                {item.stop.status === "delivered" ? (
+                  <ReceiptForm item={item} busy={busy}
+                    onSubmit={(condition, receivedMeals, noteText) => act(() => api(`/stops/${item.stop.id}/receipt`, {
+                      method: "POST", body: { condition, received_meals: receivedMeals, reject_note: noteText, reject_reason: condition === "rejected" ? "other" : undefined },
+                    }), condition === "rejected" ? "Marked as rejected." : `Confirmed ${receivedMeals} meals. Thank you!`)}
+                  />
+                ) : (
+                  <p className="text-sm text-ink-3">You can confirm receipt once the carrier marks it delivered.</p>
+                )}
+              </article>
+            ))}
           </section>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]">
             <form className="panel flex flex-col gap-4 self-start" aria-labelledby="need-title"
               onSubmit={(e) => {
                 e.preventDefault();
-                act(() => api("/organizations/needs", { method: "POST", body: {
-                  meals_needed: Number(form.meals_needed), preferred_food: form.preferred_food,
-                  deadline: new Date(form.deadline).toISOString(), priority: form.priority,
-                } }), "Need posted. FoodFlow will route matching food to you.");
+                act(() => api("/orgs/me/need", { method: "POST", body: { meals: Number(need) } }),
+                  "Need updated. FoodFlow will route matching food to you tonight.");
               }}>
-              <h2 id="need-title" style={{ fontSize: "var(--t-lg)" }}>Post a need</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <label className="field"><span>Meals needed</span><input className="input num" type="number" min={1} required value={form.meals_needed} onChange={set("meals_needed")} /></label>
-                <label className="field"><span>Priority</span>
-                  <select className="input" value={form.priority} onChange={set("priority")}>
-                    <option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option>
-                  </select>
-                </label>
-              </div>
-              <label className="field"><span>Preferred food</span><input className="input" value={form.preferred_food} onChange={set("preferred_food")} /></label>
-              <label className="field"><span>Needed by</span><input className="input" type="datetime-local" required value={form.deadline} onChange={set("deadline")} /></label>
-              <button className="btn btn-primary btn-lg" disabled={busy}>Post need</button>
+              <h2 id="need-title" style={{ fontSize: "var(--t-lg)" }}>Tonight&apos;s need</h2>
+              <label className="field"><span>Meals needed tonight</span><input className="input num" type="number" min={0} required value={need} onChange={(e) => setNeed(e.target.value)} /></label>
+              <button className="btn btn-primary btn-lg" disabled={busy}>Update need</button>
+              <p className="text-sm text-ink-3">
+                Onboarding (hours, food categories, records) is answered once at signup.
+                See <Link className="font-semibold text-accent underline" href="/organization/onboarding">onboarding status</Link>.
+              </p>
             </form>
 
             <div className="flex flex-col gap-4">
-              <section className="panel flex flex-col gap-4" aria-labelledby="needs-title">
-                <h3 id="needs-title">Your needs</h3>
-                {data.needs.length === 0 && <p className="text-ink-3">No needs posted.</p>}
-                {data.needs.map((n) => {
-                  const pct = Math.min(100, Math.round((n.meals_fulfilled / n.meals_needed) * 100));
-                  return (
-                    <div key={n.id} className="flex flex-col gap-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold">{n.meals_fulfilled} of {n.meals_needed} meals</span>
-                        <span className="flex gap-1">
-                          <span className={`chip ${n.priority === "HIGH" ? "chip-warn" : ""}`}>{n.priority}</span>
-                          <span className={`chip ${n.status === "FULFILLED" ? "chip-good" : ""}`}>{n.status === "FULFILLED" ? "fulfilled" : `by ${clock(n.deadline)}, ${until(n.deadline)}`}</span>
-                        </span>
-                      </div>
-                      <div className={`bar ${n.status === "FULFILLED" ? "bar-good" : ""}`} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${pct}% fulfilled`}>
-                        <i style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Stat label="Meals received" value={number(data.meals_received)} />
+                <Stat label="Meals received" value={number(mealsReceived)} note={`${data.history.length} deliveries`} />
                 <section className="panel flex flex-col gap-2">
                   <span className="eyebrow">Recently received</span>
-                  {data.received.length === 0 ? <span className="text-ink-3">None yet.</span> : data.received.map((r) => (
-                    <span key={r.delivery.id} className="text-sm">{r.my_meals} meals from {r.delivery.restaurant.name}{r.delivery.is_demo_seed ? " (demo)" : ""}</span>
+                  {data.history.length === 0 ? <span className="text-ink-3">None yet.</span> : data.history.slice(0, 5).map((r) => (
+                    <span key={r.stop.id} className="text-sm">
+                      {r.stop.received_meals ?? r.stop.allocated_meals} meals from {r.rescue.restaurant.name}{r.rescue.is_fictional ? " (demo)" : ""}
+                    </span>
                   ))}
                 </section>
               </div>

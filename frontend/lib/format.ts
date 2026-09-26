@@ -1,7 +1,14 @@
-import type { DeliveryStatus } from "./types";
-
 export const miles = (n: number) => `${n.toFixed(1)} mi`;
 export const minutes = (n: number) => `${Math.round(n)} min`;
+
+// "48 min" under 90 minutes, "1.5 h" above -- for food-safety windows that can span days
+// (shelf-stable food is safe for 48 h) without the metric turning into an ugly four-digit number.
+export function shortDuration(totalMinutes: number): { value: string; unit: string } {
+  const m = Math.round(totalMinutes);
+  if (m < 90) return { value: String(m), unit: "min" };
+  const hours = m / 60;
+  return { value: hours >= 10 ? String(Math.round(hours)) : hours.toFixed(1), unit: "h" };
+}
 export const number = (n: number) => n.toLocaleString("en-US");
 export const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -19,20 +26,6 @@ export function until(iso: string): string {
   if (m < 60) return `in ${m} min`;
   const h = Math.floor(m / 60);
   return `in ${h} h ${m % 60} min`;
-}
-
-export const DELIVERY_STEPS: { status: DeliveryStatus; label: string; action: string }[] = [
-  { status: "HEADING_TO_RESTAURANT", label: "Heading to restaurant", action: "Accept" },
-  { status: "ARRIVED_AT_RESTAURANT", label: "Arrived at restaurant", action: "I arrived at the restaurant" },
-  { status: "PICKED_UP", label: "Food picked up", action: "I picked up the food" },
-  { status: "DELIVERING", label: "Delivering", action: "Start delivering" },
-  { status: "DELIVERED", label: "Delivered", action: "Mark delivered" },
-  { status: "CONFIRMED", label: "Confirmed by organizations", action: "Waiting for confirmation" },
-];
-
-export function nextStep(status: DeliveryStatus) {
-  const i = DELIVERY_STEPS.findIndex((s) => s.status === status);
-  return i >= 0 && i < 4 ? DELIVERY_STEPS[i + 1] : null;
 }
 
 export function defaultDeadline(): string {

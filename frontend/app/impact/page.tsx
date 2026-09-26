@@ -14,8 +14,9 @@ export default function ImpactPage() {
         <span className="eyebrow">Impact</span>
         <h1>Food moved from kitchens to communities.</h1>
         <p className="alert alert-info max-w-[70ch]">
-          Only real deliveries confirmed by a receiving organization count here. Demo accounts, seeded history and
-          simulations are excluded.
+          Only deliveries confirmed by a receiving organization count here.{data?.includes_demo_data
+            ? " This demo environment's fictional seeded accounts and history are currently included."
+            : ""}
         </p>
       </section>
       {error && <div className="alert alert-bad" role="alert">{error}</div>}
