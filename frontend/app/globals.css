@@ -168,20 +168,88 @@ textarea.input { min-height: 88px; resize: vertical; }
 .transit .label { font-weight: 600; line-height: 28px; }
 .transit li:not(.done):not(.now) .label { color: var(--ink-3); }
 
-/* Horizontal flow on the landing page */
-.flow { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
-.flow::before { content: ""; position: absolute; left: 10%; right: 10%; top: 19px; height: 4px; background: var(--accent); border-radius: 2px; }
-.flow > div { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s-2); position: relative; padding: 0 var(--s-1); }
+/* Horizontal flow on the landing page (components/FlowLine). Stop centers sit at 10/30/50/70/90%
+   of the row, so the track runs 10%..90% and the parcel reaches stop i at i/4 of its ride.
+   Parcel loop: 7.5s, riding for the first 80% (6s), so it passes stop i at i * 1.5s. */
+.flow { --flow-draw: 1.4s; --flow-loop: 7.5s; --stop: 60px; display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
+.flow-track { position: absolute; left: 10%; right: 10%; top: calc(var(--stop) / 2 - 2px); height: 4px; background: var(--line); border-radius: 2px; }
+.flow-fill {
+  position: absolute; inset: 0; border-radius: 2px; transform: scaleX(0); transform-origin: left;
+  background: linear-gradient(90deg, var(--m-restaurant), var(--accent) 30%, var(--cyan) 60%, var(--good));
+}
+.flow-packet {
+  position: absolute; top: 50%; left: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  display: grid; place-items: center; background: #f8fafc; opacity: 0; z-index: 2;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.35), 0 0 18px rgba(34, 211, 238, 0.55);
+}
+.flow-step { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s-2); position: relative; padding: 0 var(--s-1); opacity: 0; transform: translateY(14px); }
 .flow .stop {
-  width: 42px; height: 42px; border-radius: 50%; background: var(--panel); border: 4px solid var(--accent);
-  display: grid; place-items: center; font-family: var(--ff-data), monospace; font-weight: 700; font-size: var(--t-sm);
+  position: relative; z-index: 1; width: var(--stop); height: var(--stop); border-radius: 50%; background: #f8fafc;
+  border: 3px solid var(--accent); display: grid; place-items: center; box-shadow: 0 0 0 5px var(--panel);
 }
-.flow .stop.hub { background: var(--accent); color: #fff; }
+.flow .stop.hub { background: var(--panel); border-color: var(--cyan); }
+.flow .stop::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--cyan); opacity: 0; pointer-events: none;
+}
+.flow.is-live .flow-fill { animation: flow-fill var(--flow-draw) cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.flow.is-live .flow-step { animation: flow-step-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards; animation-delay: calc(var(--i) * 260ms); }
+.flow.is-live .flow-packet { animation: flow-packet-x var(--flow-loop) linear var(--flow-draw) infinite; }
+.flow.is-live .stop { animation: flow-stop-lit var(--flow-loop) ease-out infinite; animation-delay: calc(var(--flow-draw) + var(--i) * 1.5s); }
+.flow.is-live .stop::after { animation: flow-stop-ripple var(--flow-loop) ease-out infinite; animation-delay: calc(var(--flow-draw) + var(--i) * 1.5s); }
+@keyframes flow-fill { to { transform: scaleX(1); } }
+@keyframes flow-fill-y { to { transform: scaleY(1); } }
+@keyframes flow-step-in { to { opacity: 1; transform: translateY(0); } }
+@keyframes flow-packet-x {
+  0% { left: 0; opacity: 0; } 3% { opacity: 1; } 77% { opacity: 1; }
+  80% { left: 100%; opacity: 0; } 100% { left: 100%; opacity: 0; }
+}
+@keyframes flow-packet-y {
+  0% { top: 0; opacity: 0; } 3% { opacity: 1; } 77% { opacity: 1; }
+  80% { top: 100%; opacity: 0; } 100% { top: 100%; opacity: 0; }
+}
+@keyframes flow-stop-lit {
+  0% { transform: scale(1); } 3% { transform: scale(1.14); box-shadow: 0 0 0 5px var(--panel), 0 0 22px rgba(34, 211, 238, 0.6); }
+  14%, 100% { transform: scale(1); box-shadow: 0 0 0 5px var(--panel); }
+}
+@keyframes flow-stop-ripple { 0% { opacity: 0.9; transform: scale(1); } 16%, 100% { opacity: 0; transform: scale(1.6); } }
 @media (max-width: 640px) {
-  .flow { grid-template-columns: 1fr; gap: var(--s-4); }
-  .flow::before { left: 19px; right: auto; top: 20px; bottom: 20px; width: 4px; height: auto; }
-  .flow > div { flex-direction: row; text-align: left; align-items: center; }
+  .flow { --stop: 52px; grid-template-columns: 1fr; gap: var(--s-4); }
+  .flow-track { left: calc(var(--stop) / 2 + var(--s-1) - 2px); right: auto; top: calc(var(--stop) / 2); bottom: calc(var(--stop) / 2); width: 4px; height: auto; }
+  .flow-fill { transform: scaleY(0); transform-origin: top; background: linear-gradient(180deg, var(--m-restaurant), var(--accent) 30%, var(--cyan) 60%, var(--good)); }
+  .flow.is-live .flow-fill { animation-name: flow-fill-y; }
+  .flow-packet { top: 0; left: 50%; margin: -17px 0 0 -17px; }
+  .flow.is-live .flow-packet { animation-name: flow-packet-y; }
+  .flow-step { flex-direction: row; text-align: left; align-items: center; transform: translateX(-10px); }
+  .flow .stop { flex: none; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .flow-step { opacity: 1; transform: none; }
+  .flow-fill { transform: none; }
+  .flow-packet { display: none; }
+}
+
+/* ---------- icons (components/Icon) ---------- */
+/* The artwork has dark outlines, so on the dark console it sits on a light tile. */
+.icon-tile { display: inline-grid; place-items: center; flex: none; border-radius: 12px; background: #eef2f7; border: 1px solid rgba(248, 250, 252, 0.6); }
+.icon-tile-accent { background: #dbeafe; border-color: rgba(59, 130, 246, 0.7); }
+.icon-tile-good { background: #d1fae5; border-color: rgba(52, 211, 153, 0.7); }
+.icon-tile-warn { background: #fef3c7; border-color: rgba(245, 158, 11, 0.7); }
+
+/* ---------- landing hero map ---------- */
+.landing-map-frame { height: 440px; }
+@media (min-width: 1024px) { .landing-map-frame { height: 600px; } }
+.landing-map-frame .leaflet-container { cursor: default; }
+.hotzone { animation: hotzone-breathe 5s ease-in-out infinite; }
+.hotzone-ring { animation: hotzone-ring 5s ease-in-out infinite; }
+.hotzone-1 { animation-delay: -1.7s; }
+.hotzone-2 { animation-delay: -3.3s; }
+@keyframes hotzone-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+@keyframes hotzone-ring { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.9; } }
+.route-draw { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: route-draw 2.6s cubic-bezier(0.65, 0, 0.35, 1) 300ms forwards; }
+@keyframes route-draw { to { stroke-dashoffset: 0; } }
+.map-car { width: 100%; height: 100%; display: grid; place-items: center; transition: transform 220ms linear, opacity 300ms; filter: drop-shadow(0 0 4px rgba(191, 227, 255, 0.9)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
+.landing-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: seq-blink 1.2s ease-in-out infinite; }
+.landing-match { box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45); }
 
 /* ---------- map ---------- */
 .map-shell { position: relative; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #0a1a2c; }
@@ -207,11 +275,11 @@ textarea.input { min-height: 88px; resize: vertical; }
 
 /* ---------- map markers ---------- */
 .map-marker {
-  display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%;
-  font-size: 15px; line-height: 1; border: 2px solid rgba(248, 250, 252, 0.85);
+  display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: #f8fafc;
+  font-size: 15px; line-height: 1; border: 2.5px solid rgba(248, 250, 252, 0.85);
   box-shadow: 0 0 0 2px rgba(7, 17, 31, 0.55), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
-.map-marker.is-selected { border-color: #fff; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18), 0 2px 10px rgba(0, 0, 0, 0.55); }
+.map-marker.is-selected { border-color: #fff !important; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18), 0 2px 10px rgba(0, 0, 0, 0.55); }
 .map-marker.is-offline { opacity: 0.55; filter: grayscale(0.4); }
 .map-marker-pulse { position: relative; }
 .map-marker-pulse::after {

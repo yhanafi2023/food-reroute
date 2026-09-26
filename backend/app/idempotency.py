@@ -5,6 +5,9 @@ PUT, PATCH or DELETE carries an Idempotency-Key header, the first response is
 stored and any retry with the same key from the same caller gets that stored
 response back (header Idempotent-Replayed: true) without running the action again.
 Reusing a key for a different request is rejected with 422.
+
+/auth/ requests are never stored: their responses carry a session token, and signed-out
+callers all share one caller id, so a replay could hand one person's session to another.
 """
 from __future__ import annotations
 
@@ -24,7 +27,7 @@ METHODS = ("POST", "PUT", "PATCH", "DELETE")
 class IdempotencyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         key = request.headers.get("idempotency-key")
-        if request.method not in METHODS or not key:
+        if request.method not in METHODS or not key or request.url.path.startswith("/auth/"):
             return await call_next(request)
         if len(key) > 120:
             return JSONResponse({"detail": "Idempotency-Key is too long (max 120 characters)"}, status_code=422)

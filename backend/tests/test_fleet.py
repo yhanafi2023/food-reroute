@@ -109,23 +109,18 @@ def test_av_never_chosen_when_restaurant_unstaffed_or_outside_zone(client, fake_
     assert all(t["mode"] != "waymo_sim" for t in r["trips"])
     assert r["status"] == "posted"
     client.post("/auth/register-organization", json={"kind": "restaurant", "organization_name": "South Kitchen (test)",
-               "lat": 25.700, "lng": -80.370, "manager_name": "Kim Test", "manager_email": "kim@south.example.com"})
+               "lat": 25.700, "lng": -80.370, "manager_name": "Kim Test", "manager_email": "kim@south.example.com",
+               "manager_password": "kim-password"})
     with SessionLocal() as db:
         org = db.query(Organization).filter_by(name="South Kitchen (test)").one()
         org.restaurant_profile.staffed_until = {d: "02:00" for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
         org.restaurant_profile.totes_on_hand = 10
         db.commit()
-    from app.seed import DEMO_CODE
-    tok = client.post("/auth/verify", json={"email": "kim@south.example.com", "code": "000000"})
-    assert tok.status_code == 401  # not a demo account: the demo code does not work
-    with SessionLocal() as db:
-        from app.auth import create_token
-        h = {"Authorization": f"Bearer {create_token(db.query(User).filter_by(email='kim@south.example.com').one())}"}
+    h = signin(client, "kim@south.example.com", "kim-password")
     b = {"quantity": 3, "unit": "bag", "category": "cold", "attested": True,
          "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z"}
     r2 = client.post("/rescues", json=b, headers=h).json()["rescue"]
     assert all(t["mode"] != "waymo_sim" for t in r2["trips"])
-    assert DEMO_CODE  # imported to document the demo-only code path
 
 
 def test_no_av_dropoff_where_curbside_is_false(client):

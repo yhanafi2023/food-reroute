@@ -3,31 +3,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TopNav } from "@/components/AppShell";
-import { api } from "@/lib/api";
-import { HOME_FOR_ROLE, useAuth } from "@/lib/auth";
+import Icon, { IconTile, type IconName } from "@/components/Icon";
+import { HOME_FOR_ROLE, PASSWORD_MIN_LENGTH, useAuth } from "@/lib/auth";
 
 type AccountType = "restaurant" | "receiver" | "volunteer";
 
-const TYPES: { value: AccountType; label: string; text: string }[] = [
-  { value: "restaurant", label: "Restaurant", text: "I have surplus food" },
-  { value: "receiver", label: "Organization", text: "We receive and distribute food" },
-  { value: "volunteer", label: "Volunteer", text: "I can pick up and deliver" },
+const TYPES: { value: AccountType; label: string; text: string; icon: IconName }[] = [
+  { value: "restaurant", label: "Restaurant", text: "I have surplus food", icon: "restaurant" },
+  { value: "receiver", label: "Organization", text: "We receive and distribute food", icon: "community-org" },
+  { value: "volunteer", label: "Volunteer", text: "I can pick up and deliver", icon: "driver" },
 ];
 
 // Miami-Dade / FIU area, used only if the browser does not share a location.
 const DEFAULT_LOCATION = { lat: 25.7580, lng: -80.3733 };
 
 export default function SignupPage() {
-  const { verifyCode } = useAuth();
+  const { register } = useAuth();
   const router = useRouter();
   const [type, setType] = useState<AccountType>("restaurant");
-  const [form, setForm] = useState({ name: "", email: "", phone: "", orgName: "", address: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", phone: "", orgName: "", address: "" });
   const [loc, setLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
-  const [code, setCode] = useState("");
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
@@ -46,62 +44,28 @@ export default function SignupPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // There is no password reset (no email), so catch a typo before the account exists.
+    if (form.password !== form.confirm) {
+      setError("The passwords do not match.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const { lat, lng } = loc ?? DEFAULT_LOCATION;
     try {
-      if (type === "volunteer") {
-        await api("/auth/register-volunteer", {
-          method: "POST", body: { name: form.name, email: form.email, phone: form.phone, home_lat: lat, home_lng: lng },
-        });
-      } else {
-        await api("/auth/register-organization", {
-          method: "POST",
-          body: {
+      const u = type === "volunteer"
+        ? await register("/auth/register-volunteer", {
+            name: form.name, email: form.email, password: form.password, phone: form.phone, home_lat: lat, home_lng: lng,
+          })
+        : await register("/auth/register-organization", {
             kind: type, organization_name: form.orgName, address: form.address, lat, lng,
-            manager_name: form.name, manager_email: form.email, manager_phone: form.phone,
-          },
-        });
-      }
-      setRegisteredEmail(form.email);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const u = await verifyCode(registeredEmail!, code);
+            manager_name: form.name, manager_email: form.email, manager_password: form.password, manager_phone: form.phone,
+          });
       router.push(HOME_FOR_ROLE[u.role]);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
     }
-  }
-
-  if (registeredEmail) {
-    return (
-      <>
-      <TopNav />
-      <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-6">
-        <h1 style={{ fontSize: "var(--t-3xl)" }}>Check your email</h1>
-        <form className="panel flex flex-col gap-4" onSubmit={verify}>
-          <p className="text-ink-2">We sent a 6 digit sign-in code to <strong>{registeredEmail}</strong>.</p>
-          <label className="field"><span>Code</span>
-            <input className="input mono" inputMode="numeric" pattern="\d{6}" maxLength={6} required autoFocus
-                   value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-          </label>
-          {error && <div className="alert alert-bad" role="alert">{error}</div>}
-          <button className="btn btn-primary btn-lg" disabled={busy || code.length !== 6}>{busy ? "Checking..." : "Verify and continue"}</button>
-        </form>
-      </div>
-      </>
-    );
   }
 
   return (
@@ -115,6 +79,7 @@ export default function SignupPage() {
           <div className="grid gap-2 sm:grid-cols-3">
             {TYPES.map((t) => (
               <label key={t.value} className={`flex cursor-pointer flex-col gap-1 rounded-lg border p-3 ${type === t.value ? "border-accent bg-wash" : "border-line"}`}>
+                <IconTile name={t.icon} size={48} tone={type === t.value ? "accent" : "light"} className="mb-1" />
                 <span className="flex items-center gap-2 font-semibold">
                   <input type="radio" name="type" value={t.value} checked={type === t.value} onChange={() => setType(t.value)} />
                   {t.label}
@@ -131,12 +96,18 @@ export default function SignupPage() {
         )}
         <label className="field"><span>Your name</span><input className="input" required value={form.name} onChange={set("name")} autoComplete="name" /></label>
         <label className="field"><span>Email</span><input className="input" type="email" required value={form.email} onChange={set("email")} autoComplete="email" /></label>
+        <label className="field"><span>Password (at least {PASSWORD_MIN_LENGTH} characters)</span>
+          <input className="input" type="password" required minLength={PASSWORD_MIN_LENGTH} value={form.password} onChange={set("password")} autoComplete="new-password" />
+        </label>
+        <label className="field"><span>Confirm password</span>
+          <input className="input" type="password" required minLength={PASSWORD_MIN_LENGTH} value={form.confirm} onChange={set("confirm")} autoComplete="new-password" />
+        </label>
         <label className="field"><span>Phone (optional)</span><input className="input" value={form.phone} onChange={set("phone")} autoComplete="tel" /></label>
         {type !== "volunteer" && (
           <label className="field"><span>Address (optional)</span><input className="input" value={form.address} onChange={set("address")} autoComplete="street-address" /></label>
         )}
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn btn-ghost" onClick={shareLocation}>Use my location</button>
+          <button type="button" className="btn btn-ghost pl-3" onClick={shareLocation}><Icon name="locate" size={24} />Use my location</button>
           {locNote && <span className="text-sm text-ink-2" role="status">{locNote}</span>}
         </div>
         {error && <div className="alert alert-bad" role="alert">{error}</div>}

@@ -4,9 +4,11 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, getToken, setToken } from "./api";
 import type { AuthResponse, Role, User } from "./types";
 
-// Demo accounts (backend/app/seed.py) may sign in with this fixed code while DEMO_MODE is on,
-// without requesting a real one-time code first. Never works for a non-demo account.
-export const DEMO_CODE = "246810";
+// Password of every demo account (DEMO_PASSWORD in backend/app/seed.py). The backend accepts
+// demo accounts only while DEMO_MODE is on.
+export const DEMO_PASSWORD = "demo1234";
+// Mirrors PASSWORD_MIN_LENGTH in backend/app/auth.py, which enforces it.
+export const PASSWORD_MIN_LENGTH = 8;
 
 export const HOME_FOR_ROLE: Record<Role, string> = {
   restaurant_staff: "/restaurant/dashboard",
@@ -17,12 +19,13 @@ export const HOME_FOR_ROLE: Record<Role, string> = {
   admin: "/admin/dashboard",
 };
 
+type RegisterPath = "/auth/register-organization" | "/auth/register-volunteer";
+
 interface AuthState {
   user: User | null;
   ready: boolean;
-  requestCode: (email: string) => Promise<void>;
-  verifyCode: (email: string, code: string) => Promise<User>;
-  verifyToken: (token: string) => Promise<User>;
+  login: (email: string, password: string) => Promise<User>;
+  register: (path: RegisterPath, body: Record<string, unknown>) => Promise<User>;
   logout: () => void;
 }
 
@@ -59,16 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.user;
   }, []);
 
-  const requestCode = useCallback(
-    async (email: string) => { await api<{ ok: boolean }>("/auth/request-code", { method: "POST", body: { email } }); },
-    [],
-  );
-  const verifyCode = useCallback(
-    async (email: string, code: string) => accept(await api<AuthResponse>("/auth/verify", { method: "POST", body: { email, code } })),
+  const login = useCallback(
+    async (email: string, password: string) => accept(await api<AuthResponse>("/auth/login", { method: "POST", body: { email, password } })),
     [accept],
   );
-  const verifyToken = useCallback(
-    async (token: string) => accept(await api<AuthResponse>("/auth/verify", { method: "POST", body: { token } })),
+  // Registering signs the new account in: the response carries a session, like /auth/login.
+  const register = useCallback(
+    async (path: RegisterPath, body: Record<string, unknown>) => accept(await api<AuthResponse>(path, { method: "POST", body })),
     [accept],
   );
   const logout = useCallback(() => {
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, ready, requestCode, verifyCode, verifyToken, logout }}>
+    <AuthContext.Provider value={{ user, ready, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

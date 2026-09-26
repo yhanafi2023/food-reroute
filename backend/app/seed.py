@@ -1,7 +1,7 @@
 """Demo seed. EVERY NAME, ADDRESS, EIN AND ACCOUNT HERE IS FICTIONAL.
 
-Demo sign-in (only while DEMO_MODE=true): request a code for any email below, or
-use DEMO_CODE directly with POST /auth/verify.
+Demo sign-in (only while DEMO_MODE=true): POST /auth/login with any email below and
+the password DEMO_PASSWORD.
 
   restaurant_staff    staff@casa-demo.example.com (Casa Demo Cocina)
   restaurant_manager  manager@casa-demo.example.com (Casa Demo Cocina)
@@ -18,16 +18,18 @@ running the real services under a fake clock: see app/demo_scenarios.py.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Dict
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app import clock, intake
+from app.auth import hash_password
 from app.db import Base, SessionLocal, create_schema, drop_schema, engine
 from app.models import Organization, ReceiverProfile, RestaurantProfile, User, VolunteerProfile
 
-DEMO_CODE = "246810"  # demo accounts only, DEMO_MODE only
+DEMO_PASSWORD = "demo1234"  # every demo account; published, so it works only while DEMO_MODE is on
 DAYS = intake.WEEKDAYS
 
 # name, lat, lng, staffed_until (every day), closing, totes, fmv/meal, basis/meal, election, surplus_usually
@@ -108,9 +110,15 @@ VOLUNTEERS = [
 ]
 
 
+@lru_cache(maxsize=1)
+def _demo_password_hash() -> str:
+    """Hashed once per process and shared: the demo password is public, so a per-account salt protects nothing."""
+    return hash_password(DEMO_PASSWORD)
+
+
 def _user(db: Session, email: str, name: str, role: str, org_id=None, phone="305-555-0199") -> User:
-    u = User(email=email, name=name, first_name=name.split()[0], role=role, organization_id=org_id, phone=phone,
-             is_demo_account=True, created_at=clock.now())
+    u = User(email=email, password_hash=_demo_password_hash(), name=name, first_name=name.split()[0], role=role,
+             organization_id=org_id, phone=phone, is_demo_account=True, created_at=clock.now())
     db.add(u)
     db.flush()
     return u

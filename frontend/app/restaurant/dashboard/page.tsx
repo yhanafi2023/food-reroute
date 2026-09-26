@@ -96,7 +96,7 @@ export default function RestaurantDashboardPage() {
   const history = rescues?.filter((r) => r.id !== result?.rescue.id) ?? [];
 
   return (
-    <AppShell title={result?.rescue.restaurant.name ?? "Restaurant"} subtitle="Post surplus food. FoodFlow finds a carrier and the organizations that need it."
+    <AppShell icon="restaurant" title={result?.rescue.restaurant.name ?? "Restaurant"} subtitle="Post surplus food. FoodFlow finds a carrier and the organizations that need it."
       actions={<div className="flex flex-wrap items-center gap-2">
         <span className="chip">{user.name}</span>
         <LiveStatus updatedAt={updatedAt} error={error} />
@@ -104,9 +104,9 @@ export default function RestaurantDashboardPage() {
       <ErrorNote message={error} onRetry={refresh} stale={!!rescues} />
       {!rescues ? <Loading /> : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat label="Active rescues" value={active.length} />
-          <Stat label="Completed" value={completed.length} />
-          <Stat label="Meals donated" value={number(mealsDonated)} />
+          <Stat label="Active rescues" icon="food-box" value={active.length} />
+          <Stat label="Completed" icon="food-safe" value={completed.length} />
+          <Stat label="Meals donated" icon="hot-meal" value={number(mealsDonated)} />
         </div>
       )}
 

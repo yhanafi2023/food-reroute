@@ -1,26 +1,25 @@
 """Sign-in, registration, and organization membership (section 1)."""
-from typing import Literal, Optional
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.auth import create_token, get_current_user, request_code, user_json, verify
+from app.auth import (
+    PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, authenticate, create_token, get_current_user, hash_password, user_json,
+)
 from app.db import get_db
 from app.models import Organization, ReceiverProfile, RestaurantProfile, User, VolunteerProfile
 
 router = APIRouter(tags=["auth"])
 
+NewPassword = Annotated[str, Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)]
 
-class CodeRequest(BaseModel):
+
+class LoginIn(BaseModel):
     email: EmailStr
-
-
-class VerifyIn(BaseModel):
-    email: Optional[EmailStr] = None
-    code: Optional[str] = Field(default=None, min_length=6, max_length=6)
-    token: Optional[str] = None
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class RegisterOrgIn(BaseModel):
@@ -32,12 +31,14 @@ class RegisterOrgIn(BaseModel):
     lng: float = Field(ge=-180, le=180)
     manager_name: str = Field(min_length=1, max_length=160)
     manager_email: EmailStr
+    manager_password: NewPassword
     manager_phone: str = Field(default="", max_length=40)
 
 
 class RegisterVolunteerIn(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     email: EmailStr
+    password: NewPassword
     phone: str = Field(default="", max_length=40)
     home_lat: float = Field(ge=-90, le=90)
     home_lng: float = Field(ge=-180, le=180)
@@ -46,6 +47,7 @@ class RegisterVolunteerIn(BaseModel):
 class MemberIn(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=160)
+    password: NewPassword  # set by the manager and handed to the new member (no invite email)
     phone: str = Field(default="", max_length=40)
     manager: bool = False
 
@@ -53,22 +55,17 @@ class MemberIn(BaseModel):
 def _email_free(db: Session, email: str) -> str:
     email = email.strip().lower()
     if db.query(User).filter_by(email=email).first():
-        raise HTTPException(409, "An account with this email already exists. Sign in instead.")
+        raise HTTPException(409, "An account with this email already exists. Log in instead.")
     return email
 
 
-@router.post("/auth/request-code")
-def post_request_code(body: CodeRequest, db: Session = Depends(get_db)):
-    request_code(db, body.email)
-    return {"ok": True, "message": "If that email has an account, a sign-in code and link are on the way."}
-
-
-@router.post("/auth/verify")
-def post_verify(body: VerifyIn, db: Session = Depends(get_db)):
-    if not body.token and not (body.email and body.code):
-        raise HTTPException(422, "Send the email and the 6 digit code, or the magic-link token")
-    user = verify(db, body.email, body.code, body.token)
+def _session(user: User) -> dict:
     return {"token": create_token(user), "user": user_json(user)}
+
+
+@router.post("/auth/login")
+def login(body: LoginIn, db: Session = Depends(get_db)):
+    return _session(authenticate(db, body.email, body.password))
 
 
 @router.get("/auth/me")
@@ -85,28 +82,27 @@ def register_org(body: RegisterOrgIn, db: Session = Depends(get_db)):
     db.flush()
     db.add(RestaurantProfile(organization_id=org.id) if body.kind == "restaurant" else ReceiverProfile(organization_id=org.id))
     role = "restaurant_manager" if body.kind == "restaurant" else "org_manager"
-    user = User(email=email, name=body.manager_name.strip(), first_name=body.manager_name.split()[0], role=role,
-                organization_id=org.id, phone=body.manager_phone)
+    user = User(email=email, password_hash=hash_password(body.manager_password), name=body.manager_name.strip(),
+                first_name=body.manager_name.split()[0], role=role, organization_id=org.id, phone=body.manager_phone)
     db.add(user)
     db.flush()
     audit.log(db, "organization_registered", entity="organization", actor=user, details={"organization_id": org.id})
     db.commit()
-    request_code(db, email)
-    return {"organization_id": org.id, "user": user_json(user),
-            "next": "Check your email for a sign-in code." + (" Then answer the three onboarding questions before "
-                                                               "deliveries can be routed to you." if body.kind == "receiver" else "")}
+    return {**_session(user), "organization_id": org.id,
+            "next": "You are signed in." + (" Answer the three onboarding questions before deliveries can be "
+                                             "routed to you." if body.kind == "receiver" else "")}
 
 
 @router.post("/auth/register-volunteer")
 def register_volunteer(body: RegisterVolunteerIn, db: Session = Depends(get_db)):
     email = _email_free(db, body.email)
-    user = User(email=email, name=body.name.strip(), first_name=body.name.split()[0], role="volunteer", phone=body.phone)
+    user = User(email=email, password_hash=hash_password(body.password), name=body.name.strip(),
+                first_name=body.name.split()[0], role="volunteer", phone=body.phone)
     db.add(user)
     db.flush()
     db.add(VolunteerProfile(user_id=user.id, home_lat=body.home_lat, home_lng=body.home_lng))
     db.commit()
-    request_code(db, email)
-    return {"user": user_json(user), "next": "Check your email for a sign-in code, then set your availability."}
+    return {**_session(user), "next": "You are signed in. Set your availability next."}
 
 
 def _manager(user: User = Depends(get_current_user)) -> User:
@@ -126,8 +122,8 @@ def add_member(body: MemberIn, user: User = Depends(_manager), db: Session = Dep
     email = _email_free(db, body.email)
     prefix = "restaurant" if user.role == "restaurant_manager" else "org"
     role = f"{prefix}_{'manager' if body.manager else 'staff'}"
-    member = User(email=email, name=body.name.strip(), first_name=body.name.split()[0], role=role,
-                  organization_id=user.organization_id, phone=body.phone)
+    member = User(email=email, password_hash=hash_password(body.password), name=body.name.strip(),
+                  first_name=body.name.split()[0], role=role, organization_id=user.organization_id, phone=body.phone)
     db.add(member)
     db.flush()
     audit.log(db, "member_added", entity="user", actor=user, details={"member_id": member.id, "role": role})

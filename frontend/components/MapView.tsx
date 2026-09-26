@@ -5,6 +5,7 @@
 import L from "leaflet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { iconMarkup, type IconName } from "./Icon";
 import type { CensusArea } from "@/lib/types";
 
 export type DriverState = "AVAILABLE" | "EN_ROUTE" | "ON_DELIVERY" | "OFFLINE";
@@ -57,15 +58,16 @@ function numberIcon(n: string) {
   return L.divIcon({ className: "", html: `<div class="map-num">${n}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
 }
 
-// Round emoji badge used for restaurants, organizations and drivers. `pulse` adds a live radar
-// ring (currentColor), `newPulse` briefly flashes on creation (a fresh rescue), `offline` dims it.
-function emojiIcon(emoji: string, color: string, opts: { size?: number; pulse?: boolean; offline?: boolean; selected?: boolean; newPulse?: boolean } = {}) {
-  const { size = 30, pulse, offline, selected, newPulse } = opts;
+// Round icon badge used for restaurants, organizations and drivers: a light disc (the icons have
+// dark outlines) ringed in the marker type's color. `pulse` adds a live radar ring (currentColor),
+// `newPulse` briefly flashes on creation (a fresh rescue), `offline` dims it.
+export function badgeIcon(icon: IconName, color: string, opts: { size?: number; pulse?: boolean; offline?: boolean; selected?: boolean; newPulse?: boolean } = {}) {
+  const { size = 32, pulse, offline, selected, newPulse } = opts;
   const classes = ["map-marker", pulse && "map-marker-pulse", offline && "is-offline", selected && "is-selected", newPulse && "marker-pulse-new"]
     .filter(Boolean).join(" ");
   return L.divIcon({
     className: "",
-    html: `<div class="${classes}" style="background:${color};color:${color}">${emoji}</div>`,
+    html: `<div class="${classes}" style="border-color:${color};color:${color}">${iconMarkup(icon, Math.round(size * 0.68))}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -128,7 +130,7 @@ function GlidingDriver({ point }: { point: MapPoint }) {
   }, [point.lat, point.lng]);
   const state = point.status ?? "EN_ROUTE";
   return (
-    <Marker position={pos} icon={emojiIcon("🚗", DRIVER_COLOR[state], { size: 30, pulse: state !== "OFFLINE", offline: state === "OFFLINE" })}
+    <Marker position={pos} icon={badgeIcon("car", DRIVER_COLOR[state], { size: 32, pulse: state !== "OFFLINE", offline: state === "OFFLINE" })}
       zIndexOffset={800}>
       <Tooltip direction="top" offset={[0, -16]}>
         <strong>{point.label}</strong>
@@ -160,7 +162,7 @@ function Movers({ movers }: { movers: Mover[] }) {
       {movers.map((m) => {
         const f = Math.max(0, Math.min((now - m.startedAt) / Math.max(m.durationMs, 1), 1));
         return (
-          <Marker key={m.id} position={pointAlong(m.path, f)} icon={emojiIcon("🚗", DRIVER_COLOR.ON_DELIVERY, { size: 28, pulse: true })} zIndexOffset={800}>
+          <Marker key={m.id} position={pointAlong(m.path, f)} icon={badgeIcon("car", DRIVER_COLOR.ON_DELIVERY, { size: 30, pulse: true })} zIndexOffset={800}>
             <Tooltip direction="top" offset={[0, -14]}>{m.name}</Tooltip>
           </Marker>
         );
@@ -221,6 +223,23 @@ function CommunityNeedLayer({ areas, onSelectArea }: { areas: CensusArea[]; onSe
   );
 }
 
+// Mapbox dark style when a token is configured, otherwise Esri's keyless dark gray canvas.
+export function BaseTiles() {
+  return MAPBOX_TOKEN ? (
+    <TileLayer
+      url={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`}
+      tileSize={512}
+      zoomOffset={-1}
+      attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    />
+  ) : (
+    <TileLayer
+      url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+      attribution="&copy; Esri &amp; HERE, Garmin, OpenStreetMap contributors, and the GIS user community"
+    />
+  );
+}
+
 export default function MapView({
   restaurants = [], drivers = [], organizations = [], prospects = [], reference = null, selectedId = null, onSelect,
   routes = [], movers = [], chips = [], height = 380, fitKey,
@@ -244,19 +263,7 @@ export default function MapView({
   return (
     <div className="map-shell" style={{ height }}>
       <MapContainer center={MIAMI} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
-        {MAPBOX_TOKEN ? (
-          <TileLayer
-            url={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`}
-            tileSize={512}
-            zoomOffset={-1}
-            attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          />
-        ) : (
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-            attribution="&copy; Esri &amp; HERE, Garmin, OpenStreetMap contributors, and the GIS user community"
-          />
-        )}
+        <BaseTiles />
         <FitBounds points={allPoints} fitKey={key} />
 
         {show && communityNeed.length > 0 && <CommunityNeedLayer areas={communityNeed} onSelectArea={onSelectArea} />}
@@ -270,12 +277,12 @@ export default function MapView({
         )}
 
         {restaurants.map((p) => (
-          <Marker key={p.id} position={[p.lat, p.lng]} icon={emojiIcon("🍽️", COLORS.restaurant, { newPulse: p.isNew })} zIndexOffset={600}>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={badgeIcon("restaurant", COLORS.restaurant, { newPulse: p.isNew })} zIndexOffset={600}>
             <Tooltip direction="top" offset={[0, -16]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
           </Marker>
         ))}
         {organizations.map((p) => (
-          <Marker key={p.id} position={[p.lat, p.lng]} icon={emojiIcon("🏢", COLORS.org)} zIndexOffset={600}>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={badgeIcon("community-org", COLORS.org)} zIndexOffset={600}>
             <Tooltip direction="top" offset={[0, -16]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
           </Marker>
         ))}

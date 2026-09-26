@@ -25,8 +25,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import clock  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Notification, User  # noqa: E402
-from app.seed import reset_database  # noqa: E402
+from app.seed import DEMO_PASSWORD, reset_database  # noqa: E402
 
 
 class Recorder:
@@ -39,16 +38,8 @@ class Recorder:
         return r
 
 
-def code_for(email):
-    with SessionLocal() as db:
-        u = db.query(User).filter_by(email=email).one()
-        n = db.query(Notification).filter_by(user_id=u.id, event="login_code").order_by(Notification.id.desc()).first()
-        return n.body.split("Code ")[1][:6]
-
-
 def signin(rec, email, step):
-    rec("post", "/auth/request-code", step, json={"email": email})
-    tok = rec("post", "/auth/verify", step, json={"email": email, "code": code_for(email)}).json()["token"]
+    tok = rec("post", "/auth/login", step, json={"email": email, "password": DEMO_PASSWORD}).json()["token"]
     return {"Authorization": f"Bearer {tok}"}
 
 

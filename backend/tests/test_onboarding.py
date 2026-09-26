@@ -20,11 +20,11 @@ def client(fake_clock):
 
 
 def _new_org(client):
-    client.post("/auth/register-organization", json={
+    r = client.post("/auth/register-organization", json={
         "kind": "receiver", "organization_name": "Test Pantry", "lat": 25.75, "lng": -80.36,
-        "manager_name": "Pat Test", "manager_email": "pat@pantry.example.com"})
-    from tests.test_accounts import signin_code
-    return signin_code(client, "pat@pantry.example.com")
+        "manager_name": "Pat Test", "manager_email": "pat@pantry.example.com", "manager_password": "pat-password"})
+    assert r.status_code == 200, r.text
+    return signin(client, "pat@pantry.example.com", "pat-password")
 
 
 def test_org_is_incomplete_until_all_three_answered(client):

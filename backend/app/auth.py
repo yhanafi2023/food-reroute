@@ -1,16 +1,19 @@
-"""Passwordless sign-in (email code or magic link), JWT sessions, and permission checks.
+"""Email and password sign-in, JWT sessions, and permission checks.
 
-Flow: POST /auth/request-code {email} sends a 6 digit code and a magic link through
-the notification service (console by default). POST /auth/verify with the code or
-the link token returns a JWT carrying the user's role and organization.
-Codes expire after 10 minutes and allow 5 attempts. Unknown emails get the same
-response as known ones, so the endpoint does not reveal who has an account.
+Flow: registration stores the email and a salted PBKDF2-SHA256 hash of the password
+(users.password_hash; the password itself is never stored). POST /auth/login
+{email, password} returns a JWT carrying the user's role and organization. A wrong
+password and an unknown email get the same answer. No email is ever sent.
 
-Demo accounts (seed file) may also use the demo code from app/seed.py, only while
-DEMO_MODE is on.
+The stored hash records its own iteration count, so PASSWORD_ITERATIONS can be raised
+later without breaking existing passwords.
+
+Demo accounts (seed file) share the published DEMO_PASSWORD from app/seed.py and can
+sign in only while DEMO_MODE is on.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
@@ -22,66 +25,42 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app import clock, notify
-from app.config import DEMO_MODE, FRONTEND_URL, JWT_EXPIRE_HOURS, JWT_SECRET
+from app import clock
+from app.config import DEMO_MODE, JWT_EXPIRE_HOURS, JWT_SECRET
 from app.db import get_db
-from app.models import ORG_ROLES, RESTAURANT_ROLES, LoginToken, User
+from app.models import ORG_ROLES, RESTAURANT_ROLES, User
 
 ALGORITHM = "HS256"
-CODE_TTL_MIN = 10
-MAX_ATTEMPTS = 5
+PASSWORD_SCHEME = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 600_000  # OWASP guidance for PBKDF2-HMAC-SHA256
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _hash(value: str) -> str:
-    return hmac.new(JWT_SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PASSWORD_ITERATIONS)
+    return f"{PASSWORD_SCHEME}${PASSWORD_ITERATIONS}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
 
 
-def request_code(db: Session, email: str) -> None:
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        scheme, iterations, salt, digest = stored.split("$")
+        if scheme != PASSWORD_SCHEME:
+            return False
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode(), base64.b64decode(salt), int(iterations))
+        return hmac.compare_digest(actual, base64.b64decode(digest))
+    except ValueError:  # malformed hash (includes bad base64)
+        return False
+
+
+def authenticate(db: Session, email: str, password: str) -> User:
     user = db.query(User).filter_by(email=email.strip().lower(), active=True).one_or_none()
-    if user is None:
-        return
-    code = f"{secrets.randbelow(10 ** 6):06d}"
-    link = secrets.token_urlsafe(24)
-    db.add(LoginToken(user_id=user.id, code_hash=_hash(code), link_hash=_hash(link),
-                      expires_at=clock.now() + timedelta(minutes=CODE_TTL_MIN), created_at=clock.now()))
-    notify.send(db, [user], "login_code", "Your FoodFlow sign-in code",
-                f"Code {code} (valid {CODE_TTL_MIN} minutes). Or open {FRONTEND_URL}/auth/callback?token={link}")
-    db.commit()
-
-
-def verify(db: Session, email: Optional[str], code: Optional[str], link_token: Optional[str]) -> User:
-    from app.seed import DEMO_CODE  # demo accounts only; see module docstring
-
-    now = clock.now()
-    if link_token:
-        tok = db.query(LoginToken).filter_by(link_hash=_hash(link_token)).one_or_none()
-        if tok is None or tok.used_at or tok.expires_at < now:
-            raise HTTPException(401, "This sign-in link has expired. Request a new one.")
-        tok.used_at = now
-        user = db.get(User, tok.user_id)
-        db.commit()
-        return user
-    user = db.query(User).filter_by(email=(email or "").strip().lower(), active=True).one_or_none()
-    if user is None or not code:
-        raise HTTPException(401, "That code is not valid. Request a new one.")
-    if DEMO_MODE and user.is_demo_account and hmac.compare_digest(code, DEMO_CODE):
-        return user
-    tok = (db.query(LoginToken).filter(LoginToken.user_id == user.id, LoginToken.used_at.is_(None),
-                                        LoginToken.expires_at >= now)
-           .order_by(LoginToken.id.desc()).first())
-    if tok is None:
-        raise HTTPException(401, "That code is not valid. Request a new one.")
-    tok.attempts += 1
-    if tok.attempts > MAX_ATTEMPTS:
-        tok.used_at = now
-        db.commit()
-        raise HTTPException(429, "Too many attempts. Request a new code.")
-    if not hmac.compare_digest(tok.code_hash, _hash(code)):
-        db.commit()
-        raise HTTPException(401, "That code is not valid. Request a new one.")
-    tok.used_at = now
-    db.commit()
+    if user is None or not verify_password(password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+    if user.is_demo_account and not DEMO_MODE:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Demo accounts can sign in only while DEMO_MODE is on")
     return user
 
 

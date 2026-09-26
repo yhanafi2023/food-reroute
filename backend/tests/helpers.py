@@ -1,9 +1,9 @@
-"""Shared test helpers: sign in with the demo code, build clients."""
-from app.seed import DEMO_CODE
+"""Shared test helpers: sign in with a password (the demo password by default), build clients."""
+from app.seed import DEMO_PASSWORD
 
 
-def signin(client, email: str) -> dict:
-    r = client.post("/auth/verify", json={"email": email, "code": DEMO_CODE})
+def signin(client, email: str, password: str = DEMO_PASSWORD) -> dict:
+    r = client.post("/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 

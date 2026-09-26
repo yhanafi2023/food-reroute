@@ -27,7 +27,7 @@ from app.models import Notification, User
 log = logging.getLogger("foodflow.notify")
 
 EVENTS = (
-    "login_code", "matched", "approaching", "vehicle_at_curb", "picked_up", "delivered", "receipt_confirmed",
+    "matched", "approaching", "vehicle_at_curb", "picked_up", "delivered", "receipt_confirmed",
     "cancelled", "reassigned", "expired", "expiry_warning", "rerouted", "intake_confirmation", "acknowledgment",
     "offer", "duplicate_warning", "draft_ready",
 )
@@ -44,7 +44,7 @@ def available_channels() -> List[str]:
 
 def _channels_for(user: User, event: str) -> List[str]:
     prefs = user.notification_prefs or {}
-    if event in prefs.get("muted", []) and event != "login_code":
+    if event in prefs.get("muted", []):
         return []
     wanted = prefs.get("channels") or ["console", "email"]
     chans = [c for c in wanted if c in available_channels()]

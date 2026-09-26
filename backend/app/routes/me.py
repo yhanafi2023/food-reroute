@@ -39,4 +39,4 @@ def put_prefs(body: Prefs, user: User = Depends(get_current_user), db: Session =
 @router.get("/notifications")
 def my_notifications(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(Notification).filter_by(user_id=user.id).order_by(Notification.id.desc()).limit(100).all()
-    return [notify.notification_json(n) for n in rows if n.event != "login_code"]
+    return [notify.notification_json(n) for n in rows]

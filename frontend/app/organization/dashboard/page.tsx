@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
+import Icon from "@/components/Icon";
 import DeliveryMap from "@/components/DeliveryMap";
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
@@ -59,7 +60,7 @@ export default function OrganizationDashboardPage() {
   const mealsReceived = data?.history.reduce((sum, i) => sum + (i.stop.received_meals ?? 0), 0) ?? 0;
 
   return (
-    <AppShell title={user.name} subtitle="See what's on the way. Confirm what arrives."
+    <AppShell icon="community-org" title={user.name} subtitle="See what's on the way. Confirm what arrives."
       actions={<div className="flex flex-wrap items-center gap-2"><LiveStatus updatedAt={updatedAt} error={error} /></div>}>
       <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {note && <div className={`alert ${note.kind === "good" ? "alert-good" : "alert-bad"}`} role="status">{note.text}</div>}
@@ -74,7 +75,7 @@ export default function OrganizationDashboardPage() {
               <article key={item.stop.id} className="panel panel-accent flex flex-col gap-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex flex-col gap-1">
-                    <strong className="text-xl" style={{ fontFamily: "var(--ff-display)" }}>{item.stop.allocated_meals} meals incoming</strong>
+                    <strong className="flex items-center gap-2 text-xl" style={{ fontFamily: "var(--ff-display)" }}><Icon name="van" size={30} />{item.stop.allocated_meals} meals incoming</strong>
                     <span className="text-ink-2">
                       {item.rescue.trips[0]?.carrier.type === "volunteer" ? item.rescue.trips[0].carrier.first_name : item.rescue.trips[0]?.carrier.label} · from {item.rescue.restaurant.name}
                     </span>
@@ -114,7 +115,7 @@ export default function OrganizationDashboardPage() {
 
             <div className="flex flex-col gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Stat label="Meals received" value={number(mealsReceived)} note={`${data.history.length} deliveries`} />
+                <Stat label="Meals received" icon="hot-meal" value={number(mealsReceived)} note={`${data.history.length} deliveries`} />
                 <section className="panel flex flex-col gap-2">
                   <span className="eyebrow">Recently received</span>
                   {data.history.length === 0 ? <span className="text-ink-3">None yet.</span> : data.history.slice(0, 5).map((r) => (
