@@ -274,13 +274,21 @@ def within_local_until(hhmm_by_day: Dict[str, str], at_utc: datetime) -> bool:
 
 
 def available_at(availability: Dict[str, List[List[str]]], at_utc: datetime, minutes: float = 0) -> bool:
-    """Volunteer availability: the whole span [at, at + minutes] falls inside one window."""
+    """Volunteer availability: the whole span [at, at + minutes] falls inside one window.
+    Windows that touch across midnight (e.g. 20:00-24:00 then 00:00-02:00) count as one."""
     start = _local(at_utc)
     end = start + timedelta(minutes=minutes)
-    for s_day in (start.date() - timedelta(days=1), start.date()):
-        for s, e in availability.get(WEEKDAYS[s_day.weekday()], []):
-            ws = datetime.combine(s_day, datetime.min.time()) + timedelta(minutes=_minutes(s))
-            we = datetime.combine(s_day, datetime.min.time()) + timedelta(minutes=_minutes(e))
-            if ws <= start and end <= we:
-                return True
-    return False
+    wins = []
+    for i in range(-1, 2):
+        day = start.date() + timedelta(days=i)
+        for s, e in availability.get(WEEKDAYS[day.weekday()], []):
+            base = datetime.combine(day, datetime.min.time())
+            wins.append((base + timedelta(minutes=_minutes(s)), base + timedelta(minutes=_minutes(e))))
+    wins.sort()
+    merged: List[Tuple[datetime, datetime]] = []
+    for s, e in wins:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return any(ws <= start and end <= we for ws, we in merged)
