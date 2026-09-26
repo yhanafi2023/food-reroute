@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS
 from app.db import create_schema
 from app.idempotency import IdempotencyMiddleware
-from app.routes import analytics_routes, auth_routes, me, onboarding, prospects, records, rescues, tax_routes, trips, value_routes
+from app.routes import analytics_routes, auth_routes, demo_routes, me, onboarding, prospects, records, rescues, tax_routes, trips, value_routes
 
 logging.basicConfig(level=logging.INFO)
 
@@ -17,8 +17,10 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if DEMO_MODE:
+        from app.demo import install
         from app.seed import seed_if_empty
 
+        install()  # deterministic demo clock unless DEMO_CLOCK_START=real
         seed_if_empty()
     else:
         create_schema()
@@ -49,8 +51,19 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
                    allow_headers=["*"], expose_headers=["Idempotent-Replayed"])
 for module in (auth_routes, me, onboarding, rescues, trips, records, tax_routes, value_routes, analytics_routes, prospects):
     app.include_router(module.router)
+if DEMO_MODE:
+    app.include_router(demo_routes.router)
 
 
 @app.get("/")
 def health():
     return {"name": "FoodFlow API", "status": "ok", "demo_mode": DEMO_MODE}
+
+
+@app.get("/time")
+def server_time():
+    """The server's clock (the demo clock in DEMO_MODE), so clients compute deadlines from it."""
+    from app import clock
+    from app.config import TIMEZONE
+
+    return {"now": clock.now().replace(microsecond=0).isoformat() + "Z", "timezone": TIMEZONE}

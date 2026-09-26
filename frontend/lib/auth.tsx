@@ -2,20 +2,30 @@
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getToken, setToken } from "./api";
-import type { AuthResponse, Role, User } from "./types";
+import type { AuthResponse, Role, User, Workspace } from "./types";
 
-export const HOME_FOR_ROLE: Record<Role, string> = {
-  RESTAURANT: "/restaurant/dashboard",
-  DRIVER: "/driver/dashboard",
-  ORGANIZATION: "/organization/dashboard",
-  ADMIN: "/admin/dashboard",
+export const WORKSPACE_FOR_ROLE: Record<Role, Workspace> = {
+  restaurant_staff: "restaurant",
+  restaurant_manager: "restaurant",
+  volunteer: "volunteer",
+  org_staff: "org",
+  org_manager: "org",
+  admin: "coordinator",
+};
+
+export const HOME: Record<Workspace, string> = {
+  restaurant: "/restaurant",
+  volunteer: "/volunteer",
+  org: "/org",
+  coordinator: "/coordinator",
 };
 
 interface AuthState {
   user: User | null;
   ready: boolean;
-  login: (email: string, password: string) => Promise<User>;
-  signup: (body: Record<string, unknown>) => Promise<User>;
+  requestCode: (email: string) => Promise<void>;
+  verifyCode: (email: string, code: string) => Promise<User>;
+  demoSignin: (persona: Workspace) => Promise<User>;
   logout: () => void;
 }
 
@@ -52,12 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res.user;
   }, []);
 
-  const login = useCallback(
-    async (email: string, password: string) => accept(await api<AuthResponse>("/auth/login", { method: "POST", body: { email, password } })),
+  const requestCode = useCallback(async (email: string) => {
+    await api("/auth/request-code", { method: "POST", body: { email } });
+  }, []);
+  const verifyCode = useCallback(
+    async (email: string, code: string) => accept(await api<AuthResponse>("/auth/verify", { method: "POST", body: { email, code } })),
     [accept],
   );
-  const signup = useCallback(
-    async (body: Record<string, unknown>) => accept(await api<AuthResponse>("/auth/signup", { method: "POST", body })),
+  const demoSignin = useCallback(
+    async (persona: Workspace) => accept(await api<AuthResponse>("/demo/signin", { method: "POST", body: { persona } })),
     [accept],
   );
   const logout = useCallback(() => {
@@ -65,7 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, ready, login, signup, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, ready, requestCode, verifyCode, demoSignin, logout }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthState {
@@ -74,14 +89,14 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
-// Guard a page by role: sends logged out visitors to /login and other roles to their own dashboard.
-export function useRequireRole(role: Role): User | null {
+// Guard a workspace: signed out visitors go to /login, other roles to their own workspace.
+export function useWorkspace(ws: Workspace): User | null {
   const { user, ready } = useAuth();
   const router = useRouter();
   useEffect(() => {
     if (!ready) return;
-    if (!user) router.replace("/login");
-    else if (user.role !== role) router.replace(HOME_FOR_ROLE[user.role]);
-  }, [ready, user, role, router]);
-  return user && user.role === role ? user : null;
+    if (!user) router.replace(`/login?next=${HOME[ws]}`);
+    else if (WORKSPACE_FOR_ROLE[user.role] !== ws) router.replace(HOME[WORKSPACE_FOR_ROLE[user.role]]);
+  }, [ready, user, ws, router]);
+  return user && WORKSPACE_FOR_ROLE[user.role] === ws ? user : null;
 }

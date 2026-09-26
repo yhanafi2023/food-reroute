@@ -14,6 +14,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["DEMO_MODE"] = "true"
 os.environ["ROUTING_PROVIDER"] = "offline"
 os.environ["RUN_SCHEDULER"] = "false"
+os.environ["DEMO_CLOCK_START"] = "real"  # tests control time with fake_clock
 os.environ["JWT_SECRET"] = "test-secret-at-least-32-bytes-long-000"
 os.environ.pop("MAPBOX_ACCESS_TOKEN", None)
 os.environ.pop("SMTP_HOST", None)

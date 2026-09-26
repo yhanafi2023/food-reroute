@@ -1,46 +1,62 @@
-import type { DeliveryStatus } from "./types";
+// Times are shown in the service area's time zone (Miami), whatever the viewer's device says.
+export const TIMEZONE = "America/New_York";
 
-export const miles = (n: number) => `${n.toFixed(1)} mi`;
-export const minutes = (n: number) => `${Math.round(n)} min`;
 export const number = (n: number) => n.toLocaleString("en-US");
-export const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-export function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+export function time(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TIMEZONE });
 }
 
-export function minutesUntil(iso: string): number {
-  return Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+export function minutesBetween(fromIso: string, toIso: string): number {
+  return Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 60000);
 }
 
-export function until(iso: string): string {
-  const m = minutesUntil(iso);
-  if (m <= 0) return "past due";
+export function relative(targetIso: string | null | undefined, nowIso: string | null | undefined): string {
+  if (!targetIso || !nowIso) return "";
+  const m = minutesBetween(nowIso, targetIso);
+  if (m < -1) return `${-m} min ago`;
+  if (m <= 1) return "now";
   if (m < 60) return `in ${m} min`;
-  const h = Math.floor(m / 60);
-  return `in ${h} h ${m % 60} min`;
+  return `in ${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-export const DELIVERY_STEPS: { status: DeliveryStatus; label: string; action: string }[] = [
-  { status: "HEADING_TO_RESTAURANT", label: "Heading to restaurant", action: "Accept" },
-  { status: "ARRIVED_AT_RESTAURANT", label: "Arrived at restaurant", action: "I arrived at the restaurant" },
-  { status: "PICKED_UP", label: "Food picked up", action: "I picked up the food" },
-  { status: "DELIVERING", label: "Delivering", action: "Start delivering" },
-  { status: "DELIVERED", label: "Delivered", action: "Mark delivered" },
-  { status: "CONFIRMED", label: "Confirmed by organizations", action: "Waiting for confirmation" },
-];
+export const UNIT_LABEL: Record<string, [string, string]> = {
+  individual_meal: ["meal", "meals"],
+  bag: ["bag", "bags"],
+  box: ["box", "boxes"],
+  tray: ["tray", "trays"],
+  half_pan: ["half pan", "half pans"],
+  full_pan: ["full pan", "full pans"],
+};
 
-export function nextStep(status: DeliveryStatus) {
-  const i = DELIVERY_STEPS.findIndex((s) => s.status === status);
-  return i >= 0 && i < 4 ? DELIVERY_STEPS[i + 1] : null;
+export function qty(n: number, unit: string): string {
+  const [one, many] = UNIT_LABEL[unit] ?? [unit, unit];
+  return `${n % 1 === 0 ? n : n.toFixed(1)} ${n === 1 ? one : many}`;
 }
 
-export function defaultDeadline(): string {
-  // "pickup before 10 PM" tonight, or three hours from now if it is already late
-  const d = new Date();
-  const tenPm = new Date(d);
-  tenPm.setHours(22, 0, 0, 0);
-  const target = tenPm.getTime() - d.getTime() > 45 * 60000 ? tenPm : new Date(d.getTime() + 3 * 3600000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
+export const STATUS_LABEL: Record<string, string> = {
+  posted: "Looking for a carrier",
+  matched: "Carrier assigned",
+  en_route_pickup: "On the way to pick up",
+  picked_up: "Picked up",
+  en_route_dropoff: "On the way to drop off",
+  delivered: "Delivered, waiting for receipt",
+  received: "Received",
+  rejected: "Not accepted",
+  expired: "Expired",
+  cancelled: "Cancelled",
+  reassigned: "Reassigned",
+  pending: "Not arrived yet",
+  rerouted: "Re-routed",
+};
+
+export function statusLabel(s: string): string {
+  return STATUS_LABEL[s] ?? s.replace(/_/g, " ");
 }
+
+export const CARRIER_LABEL: Record<string, string> = {
+  volunteer: "Volunteer",
+  waymo_sim: "Simulated autonomous vehicle",
+  robot_sim: "Simulated sidewalk robot",
+};

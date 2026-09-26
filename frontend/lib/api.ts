@@ -1,9 +1,6 @@
-// Typed fetch wrapper: attaches the JWT, throws readable errors, and serves mocks
-// when NEXT_PUBLIC_USE_MOCKS=true so frontend work never waits on the backend.
-import { mockRequest } from "./mock";
-
+// Typed fetch wrapper: attaches the JWT, throws readable errors, times out, and sends an
+// Idempotency-Key on handoff actions so a retried tap on bad signal never applies twice.
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 const TOKEN_KEY = "foodflow_token";
 
 export class ApiError extends Error {
@@ -52,13 +49,23 @@ export function isAbort(e: unknown): boolean {
 
 // `signal` cancels the request (navigation, a newer search, the user pressing Cancel).
 // Every request also times out after REQUEST_TIMEOUT_MS so a dead connection never hangs the UI.
-export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
-  const method = options.method ?? "GET";
-  if (USE_MOCKS) return mockRequest<T>(method, path, options.body);
+export interface ApiOptions {
+  method?: string;
+  body?: unknown;
+  signal?: AbortSignal;
+  idempotencyKey?: string;
+}
 
+export function newIdempotencyKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
+export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const method = options.method ?? "GET";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
