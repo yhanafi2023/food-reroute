@@ -219,7 +219,7 @@ def _merged_windows(profile: ReceiverProfile, exceptions: Dict[date, str], aroun
 
 
 def _clock_text(dt_local: datetime, ref_local: datetime) -> str:
-    t = dt_local.strftime("%-I:%M %p")
+    t = clock.strftime12(dt_local)
     if dt_local.date() == ref_local.date():
         return t
     if dt_local.date() == ref_local.date() + timedelta(days=1):

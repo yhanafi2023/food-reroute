@@ -64,6 +64,17 @@ def local_to_utc(dt_local: datetime) -> datetime:
     return dt_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def strftime12(dt: datetime) -> str:
+    """'11:40 PM' style time, no leading zero on the hour.
+
+    strftime's "%-I" (no leading zero) is a glibc/macOS extension only; it raises
+    ValueError on Windows' strftime. "%I" is zero-padded on every platform, so
+    strip a leading zero instead -- %I only ever ranges 01-12, so this can never
+    eat a real "0" from the minutes.
+    """
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
 def fmt_local(dt_utc: datetime) -> str:
     """'11:40 PM' style local time."""
-    return to_local(dt_utc).strftime("%-I:%M %p")
+    return strftime12(to_local(dt_utc))

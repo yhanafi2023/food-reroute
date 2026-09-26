@@ -1,6 +1,6 @@
 """Dev 4 tests: allocation, the ML prototype, and impact."""
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.intelligence import allocate, compute_impact, demand_fit, forecast_tonight, model_info, predict_surplus  # noqa: E402
+from app.intelligence import (  # noqa: E402
+    allocate, compute_impact, demand_fit, forecast_tonight, model_info, predict_surplus, rank_candidates,
+    reweight_total, score_need,
+)
 from app.intelligence.impact import summarize_impact  # noqa: E402
 from app.intelligence.ml import model as ml_model  # noqa: E402
 from app.intelligence.ml.generate_data import generate  # noqa: E402
@@ -52,11 +55,25 @@ def test_at_most_three_stops():
     assert sum(a["meals"] for a in result) == 30
 
 
-def test_ties_break_on_deadline_then_distance():
+def test_ranking_is_deterministic_and_weight_configurable():
+    """Ranking is a weighted score (app.intelligence.allocation.score_need), not a
+    strict lexicographic order -- so it needs an explicit `now` to be reproducible
+    (urgency depends on the current time), and weights actually change the winner
+    (the whole point of making community need a configurable factor)."""
+    now = datetime(2026, 9, 26, 20, 0, tzinfo=timezone.utc)
     far = {"id": "far", "meals_needed": 10, "priority": "HIGH", "deadline": "2026-09-26T22:00:00", "distance_miles": 5}
     near = {**far, "id": "near", "distance_miles": 1}
     sooner = {**far, "id": "sooner", "deadline": "2026-09-26T21:00:00", "distance_miles": 9}
-    assert [a["need_id"] for a in allocate(30, [far, near, sooner])] == ["sooner", "near", "far"]
+    candidates = [far, near, sooner]
+
+    assert (allocate(30, candidates, now=now) == allocate(30, candidates, now=now)), \
+        "same inputs and the same `now` must give the same order every time"
+
+    distance_only = {"distance": 1.0, "urgency": 0.0, "demand": 0.0, "capacity": 0.0, "community_need": 0.0}
+    assert allocate(30, candidates, now=now, weights=distance_only)[0]["need_id"] == "near"
+
+    urgency_only = {"distance": 0.0, "urgency": 1.0, "demand": 0.0, "capacity": 0.0, "community_need": 0.0}
+    assert allocate(30, candidates, now=now, weights=urgency_only)[0]["need_id"] == "sooner"
 
 
 def test_skips_fulfilled_needs_and_handles_empty_input():

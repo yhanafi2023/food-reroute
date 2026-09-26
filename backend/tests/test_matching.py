@@ -118,3 +118,51 @@ def test_matching_explanation_is_for_restaurant_and_admin(client):
     r = post(client, h)
     assert client.get(f"/rescues/{r['id']}/matching-explanation", headers=signin(client, EMAILS["admin"])).status_code == 200
     assert client.get(f"/rescues/{r['id']}/matching-explanation", headers=signin(client, EMAILS["org_staff"])).status_code == 403
+
+
+# ---------- community need (Census-derived matching factor) ----------
+
+def test_eligible_organizations_carry_a_ranked_score_breakdown(client):
+    """Community need is one scored factor among several, computed only for
+    organizations eligibility.check has already let through -- never a hard gate."""
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h, category="cold", unit="box", quantity=10)
+    e, _, good = explain(client, h, r["id"])
+    assert good == {"Demo Community Fridge", "Demo Night Shelter"}
+    for x in e["eligible"]:
+        assert x["score"].keys() >= {"distance_score", "urgency_score", "demand_score", "capacity_score",
+                                     "community_need_score", "total"}
+        assert all(0.0 <= v <= 1.0 for k, v in x["score"].items() if k.endswith("_score") or k == "total")
+    ranks = [x["rank"] for x in e["eligible"]]
+    assert ranks == list(range(1, len(ranks) + 1))
+    assert [x["rank"] for x in e["eligible"]] == sorted(
+        range(1, len(ranks) + 1), key=lambda i: -e["eligible"][i - 1]["score"]["total"])
+
+
+def test_what_if_community_priority_reweights_without_changing_eligibility(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h, category="cold", unit="box", quantity=10)
+    standard = client.get(f"/rescues/{r['id']}/matching-explanation", headers=h).json()
+    priority = client.get(f"/rescues/{r['id']}/matching-explanation?weights=community_need_priority", headers=h).json()
+    assert priority["weights_used"] == "community_need_priority"
+    std_ids = {x["organization_id"] for x in standard["eligible"]}
+    pri_ids = {x["organization_id"] for x in priority["eligible"]}
+    assert std_ids == pri_ids  # re-weighting never changes who is feasible, only the ranking
+    std_totals = {x["organization_id"]: x["score"]["total"] for x in standard["eligible"]}
+    pri_totals = {x["organization_id"]: x["score"]["total"] for x in priority["eligible"]}
+    assert std_totals != pri_totals  # but it does change the numbers
+
+
+def test_community_need_endpoints(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    areas = client.get("/community-need/areas", headers=h).json()
+    assert areas["source"].startswith("U.S. Census Bureau")
+    assert len(areas["areas"]) > 0
+    assert {a["bucket"] for a in areas["areas"]} <= {"low", "moderate", "high", "very_high"}
+
+    from app.models import Organization
+    with SessionLocal() as db:
+        shelter = db.query(Organization).filter_by(name="Demo Night Shelter").one()
+    need = client.get(f"/community-need/organizations/{shelter.id}", headers=h).json()
+    assert need["community_need"]["bucket"] in ("low", "moderate", "high", "very_high")
+    assert "does not describe individual residents" in need["disclaimer"]

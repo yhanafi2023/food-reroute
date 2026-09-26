@@ -390,6 +390,9 @@ class MatchingExplanation(Base):
     eligible: Mapped[bool] = mapped_column(Boolean)
     reasons: Mapped[list] = mapped_column(JSON, default=list)       # [{"code": "closed", "text": "closed until 8:00 AM"}]
     estimated_arrival_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Weighted ranking breakdown (distance/urgency/demand/capacity/community_need + total),
+    # set only for eligible organizations. See app.intelligence.allocation.score_need.
+    score: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

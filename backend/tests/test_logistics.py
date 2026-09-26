@@ -41,7 +41,7 @@ def test_demo_match_marcus_splits_food_bank_and_shelter():
     assert 1 <= len(match["top_candidates"]) <= 3
     top = match["top_candidates"][0]
     assert top["driver_name"] == "Marcus"
-    assert set(top["breakdown"]) == {"distance", "eta", "urgency", "demand_fit", "priority"}
+    assert set(top["breakdown"]) == {"distance", "eta", "urgency", "demand_fit", "priority", "community_need"}
     assert top["score"] == pytest.approx(sum(top["breakdown"].values()), abs=0.05)
     scores = [c["score"] for c in match["top_candidates"]]
     assert scores == sorted(scores)

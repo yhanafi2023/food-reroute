@@ -8,10 +8,13 @@ Inputs are plain dicts (the backend converts rows before calling):
 
 Score (lower is better):
   score = pickup_mi + route_mi + 0.1 x eta_min x (1 + urgency)
-          - 3 x demand_fit - 2 x priority_bonus
+          - 3 x demand_fit - 2 x priority_bonus - 2 x community_need_fit
   urgency        = clamp(1 - minutes_to_deadline / 180, 0, 1)
   demand_fit     = meals placed on real need / meals available
   priority_bonus = meal weighted average of HIGH 1, MEDIUM 0.5, LOW 0
+  community_need_fit = meal weighted average Census-tract poverty score (0 to 1) of the
+                       organizations served, see app.community_need -- one optimization
+                       factor among feasible plans, never a hard requirement
 
 Distances use the offline road estimate (straight line x 1.3). Times come from the
 ETA model (intelligence.eta: gradient boosting trained on real OSRM road-network
@@ -26,6 +29,7 @@ import heapq
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from app import community_need
 from app.intelligence.allocation import allocate, demand_fit, remaining_meals
 from app.intelligence.eta.model import predict_legs, sum_legs
 from app.logistics.geo import haversine_miles, road_miles
@@ -33,6 +37,15 @@ from app.logistics.geo import haversine_miles, road_miles
 TOP_K = 5
 URGENCY_HORIZON_MINUTES = 180.0
 PRIORITY_BONUS = {"HIGH": 1.0, "MEDIUM": 0.5, "LOW": 0.0}
+COMMUNITY_NEED_BONUS_WEIGHT = 2.0  # same scale as PRIORITY_BONUS's max swing, see _evaluate's breakdown
+
+
+def _community_need_fit(stops: Sequence[Dict[str, Any]]) -> float:
+    """Meal-weighted average community-need score (0-1) across a plan's stops."""
+    total = sum(s["meals"] for s in stops) or 1
+    weighted = sum((community_need.score_for(s["lat"], s["lng"]) or {}).get("community_need_score", 0.0) * s["meals"]
+                  for s in stops)
+    return weighted / total
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -118,6 +131,7 @@ def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float], picku
     fit = demand_fit(rescue["meals"], allocations, needs)
     total = sum(s["meals"] for s in stops) or 1
     bonus = sum(PRIORITY_BONUS.get(str(s["priority"]).upper(), 0.0) * s["meals"] for s in stops) / total
+    need_fit = _community_need_fit(stops)
 
     breakdown = {
         "distance": round(pickup_mi + route_mi, 2),
@@ -125,6 +139,7 @@ def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float], picku
         "urgency": round(0.1 * eta_min * urgency, 2),
         "demand_fit": round(-3 * fit, 2),
         "priority": round(-2 * bonus, 2),
+        "community_need": round(-COMMUNITY_NEED_BONUS_WEIGHT * need_fit, 2),
     }
     return {
         "driver": driver,
@@ -137,6 +152,7 @@ def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float], picku
         "eta_source": "ml" if pickup_eta.get("source") == "ml" else "rule",
         "urgency": urgency,
         "demand_fit": fit,
+        "community_need": need_fit,
         "score": round(sum(breakdown.values()), 2),
         "breakdown": breakdown,
     }
@@ -191,7 +207,9 @@ def _reasons(best, options, minutes_left: Optional[float]) -> List[str]:
             f"Total trip {best['pickup_miles'] + best['dropoff_miles']:.1f} mi, about {best['eta_minutes']:.0f} min door to door"
             f" (likely {best['eta_range'][0]:.0f} to {best['eta_range'][1]:.0f} min)"
         )
-    return reasons[:4]
+    if best["community_need"] >= 0.5:
+        reasons.append("Serves a Census tract with a higher measured poverty rate (see Community Need)")
+    return reasons[:5]
 
 
 def find_best_match(

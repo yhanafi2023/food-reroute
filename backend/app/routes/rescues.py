@@ -1,12 +1,13 @@
 """Restaurant posting and rescue views (sections 3, 4, 5)."""
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app import audit, clock, dispatch, posting
+from app import audit, clock, dispatch, intelligence, posting
+from app.assumptions import MATCHING_WEIGHTS, MATCHING_WEIGHTS_COMMUNITY_PRIORITY
 from app.auth import RESTAURANT_ANY, RESTAURANT_MANAGER, get_current_user
 from app.db import get_db
 from app.eligibility import group
@@ -195,9 +196,29 @@ def rescue_audit(rescue_id: int, user: User = Depends(get_current_user), db: Ses
     return [audit.event_json(e) for e in events]
 
 
+WEIGHT_PRESETS = {"standard": MATCHING_WEIGHTS, "community_need_priority": MATCHING_WEIGHTS_COMMUNITY_PRIORITY}
+
+
+def _why(components: dict) -> list:
+    """Plain-English checklist from a score breakdown (section 10's "why this match" panel)."""
+    out = []
+    if components["distance_score"] >= 0.7:
+        out.append("Close to the restaurant")
+    if components["urgency_score"] >= 0.6:
+        out.append("This organization's receiving window closes soon")
+    if components["demand_score"] >= 0.8:
+        out.append("Can take a large share of this rescue")
+    if components["capacity_score"] >= 0.6:
+        out.append("Has plenty of spare capacity beyond this delivery")
+    if components["community_need_score"] >= 0.5:
+        out.append("Serves a Census tract with a higher measured poverty rate")
+    return out
+
+
 @router.get("/rescues/{rescue_id}/matching-explanation")
-def matching_explanation(rescue_id: int, attempt: Optional[int] = None, user: User = Depends(get_current_user),
-                         db: Session = Depends(get_db)):
+def matching_explanation(rescue_id: int, attempt: Optional[int] = None,
+                         weights: Literal["standard", "community_need_priority"] = "standard",
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     r, only_org = load_rescue(db, rescue_id, user)
     if user.role not in ("admin", "restaurant_staff", "restaurant_manager"):
         raise HTTPException(403, "Matching explanations are for the restaurant and admins")
@@ -205,9 +226,25 @@ def matching_explanation(rescue_id: int, attempt: Optional[int] = None, user: Us
     latest = attempt or db.query(func.max(MatchingExplanation.attempt)).filter_by(rescue_id=r.id).scalar()
     rows = (db.query(MatchingExplanation, Organization).join(Organization, Organization.id == MatchingExplanation.organization_id)
             .filter(MatchingExplanation.rescue_id == r.id, MatchingExplanation.attempt == latest).all())
+
+    preset = WEIGHT_PRESETS[weights]
+    eligible = []
+    for m, o in rows:
+        if not m.eligible:
+            continue
+        score = dict(m.score or {})
+        if weights != "standard" and score:
+            score["total"] = intelligence.reweight_total(score, preset)
+        eligible.append({"organization_id": o.id, "name": o.name, "estimated_arrival": iso(m.estimated_arrival_at),
+                         "score": score, "why": _why(score) if score else []})
+    eligible.sort(key=lambda e: e["score"].get("total", 0), reverse=True)
+    for i, e in enumerate(eligible):
+        e["rank"] = i + 1
+
     return {
-        "rescue_id": r.id, "attempt": latest, "status": r.status,
-        "eligible": [{"organization_id": o.id, "name": o.name, "estimated_arrival": iso(m.estimated_arrival_at)} for m, o in rows if m.eligible],
+        "rescue_id": r.id, "attempt": latest, "status": r.status, "weights_used": weights,
+        "matching_weights": preset,
+        "eligible": eligible,
         "ineligible": [{"organization_id": o.id, "name": o.name, "reasons": m.reasons,
                         "groups": sorted({group(x["code"]) for x in m.reasons}),
                         "estimated_arrival": iso(m.estimated_arrival_at)} for m, o in rows if not m.eligible],

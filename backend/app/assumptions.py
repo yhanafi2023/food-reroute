@@ -64,6 +64,28 @@ HANDOFF_BURDEN_MIN = {"volunteer": 2.0, "waymo_sim": 6.0, "robot_sim": 6.0}
 RELIABILITY_PRIOR = {"volunteer": 0.85, "waymo_sim": 0.85, "robot_sim": 0.85}
 RELIABILITY_PRIOR_TRIPS = 10
 
+# Community-need-aware organization ranking (app/intelligence/allocation.py::score_need).
+# Weights on normalized [0, 1] component scores; must sum to 1. Community need is one
+# optimization factor among feasible matches -- it never overrides a hard constraint
+# (app/eligibility.py runs first and removes infeasible organizations entirely).
+MATCHING_WEIGHTS = {
+    "distance": _f("MATCH_W_DISTANCE", 0.25),
+    "urgency": _f("MATCH_W_URGENCY", 0.25),
+    "demand": _f("MATCH_W_DEMAND", 0.20),
+    "capacity": _f("MATCH_W_CAPACITY", 0.15),
+    "community_need": _f("MATCH_W_COMMUNITY_NEED", 0.15),
+}
+# A second named preset for the "what if we prioritized community impact?" comparison
+# (GET /rescues/{id}/matching-explanation?weights=community_need_priority). Read-only:
+# it re-scores already-eligible candidates for display, it never changes a real trip.
+MATCHING_WEIGHTS_COMMUNITY_PRIORITY = {
+    "distance": _f("MATCH_W_COMMUNITY_DISTANCE", 0.15),
+    "urgency": _f("MATCH_W_COMMUNITY_URGENCY", 0.15),
+    "demand": _f("MATCH_W_COMMUNITY_DEMAND", 0.15),
+    "capacity": _f("MATCH_W_COMMUNITY_CAPACITY", 0.15),
+    "community_need": _f("MATCH_W_COMMUNITY_COMMUNITY_NEED", 0.40),
+}
+
 # Tax estimate (IRC 170(e)(3)(C)).
 BASIS_ELECTION_FRACTION = 0.25
 TAX_INCOME_LIMIT_FRACTION = 0.15
@@ -90,6 +112,24 @@ ASSUMPTIONS: Dict[str, Dict[str, Any]] = {
                             "fleet_size": ROBOT_SIM_FLEET_SIZE}, "kind": "assumption", "note": "SIMULATED sidewalk robot."},
     "meals_per_tote": {"value": MEALS_PER_TOTE, "kind": "assumption"},
     "mode_weights": {"value": MODE_WEIGHTS, "kind": "assumption"},
+    "matching_weights": {"value": MATCHING_WEIGHTS, "kind": "assumption",
+                         "note": "How much distance, urgency, organization demand, capacity and community "
+                                 "need each count toward ranking organizations that are ALL already operationally "
+                                 "feasible (app/eligibility.py has already removed anything infeasible). "
+                                 "Configurable via MATCH_W_* environment variables."},
+    "matching_weights_community_priority": {"value": MATCHING_WEIGHTS_COMMUNITY_PRIORITY, "kind": "assumption",
+                                            "note": "An alternate weighting used only for the read-only "
+                                                    "\"what if we prioritized community impact?\" comparison; "
+                                                    "never applied to a real match."},
+    "community_need_data": {"value": {"source": "U.S. Census Bureau, 2024 ACS 5-Year Estimates (Table S1701, "
+                                                "Poverty Status in the Past 12 Months)",
+                                      "geography": "Census tract", "county": "Miami-Dade County, Florida"},
+                            "kind": "cited",
+                            "note": "Community Need is an area-level estimate; it does not describe individual "
+                                    "residents. Categories used for map visualization (Low/Moderate/High/Very High) "
+                                    "are a FoodFlow bucketing of the poverty rate, not an official Census "
+                                    "classification. See app/community_need.py and scripts/import_census_tracts.py.",
+                            "source": "https://www.census.gov/programs-surveys/acs/data.html"},
     "handoff_burden_min": {"value": HANDOFF_BURDEN_MIN, "kind": "assumption"},
     "reliability_prior": {"value": RELIABILITY_PRIOR, "kind": "assumption",
                           "note": f"Blended with observed completion rates as if from {RELIABILITY_PRIOR_TRIPS} prior trips."},

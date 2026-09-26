@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import audit, clients, clock, eligibility, intake, lifecycle, notify
+from app import audit, clients, clock, eligibility, intake, intelligence, lifecycle, notify
 from app.assumptions import (
     HANDOFF_BURDEN_MIN, LOAD_WINDOW_MIN, LOADING_MIN, MATCH_RADIUS_MI, MODE_WEIGHTS, RELIABILITY_PRIOR,
     RELIABILITY_PRIOR_TRIPS, SAFE_MARGIN_TARGET_MIN,
@@ -116,6 +116,7 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> D
     in_range = [o for o in orgs if haversine_miles(o.lat, o.lng, *r_pt) <= MATCH_RADIUS_MI]
     travel, est_travel, _ = clients.travel([(r_pt, (o.lat, o.lng), 1) for o in in_range])
     eligible: List[Dict[str, Any]] = []
+    explanations: Dict[int, MatchingExplanation] = {}
     for o in orgs:
         p = o.receiver_profile
         if o not in in_range:
@@ -123,8 +124,10 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> D
         else:
             arrival = earliest + timedelta(minutes=LOADING_MIN + travel[in_range.index(o)]["p50"])
             reasons, cap = eligibility.check(db, p, rescue, earliest, arrival)
-        db.add(MatchingExplanation(rescue_id=rescue.id, organization_id=o.id, attempt=attempt, eligible=not reasons,
-                                   reasons=reasons, estimated_arrival_at=arrival, computed_at=now))
+        exp = MatchingExplanation(rescue_id=rescue.id, organization_id=o.id, attempt=attempt, eligible=not reasons,
+                                  reasons=reasons, estimated_arrival_at=arrival, computed_at=now)
+        db.add(exp)
+        explanations[o.id] = exp
         if not reasons and cap > 0:
             eligible.append({"org": o, "profile": p, "capacity": cap, "arrival": arrival,
                              "distance": haversine_miles(o.lat, o.lng, *r_pt)})
@@ -136,10 +139,16 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> D
     needs = [{"id": e["org"].id, "organization_id": e["org"].id, "meals_needed": e["capacity"], "meals_fulfilled": 0,
               "priority": "MEDIUM", "deadline": intake.receiving_until(db, e["profile"], e["arrival"]).isoformat()
               if intake.receiving_until(db, e["profile"], e["arrival"]) else None,
-              "distance_miles": e["distance"],
+              "distance_miles": e["distance"], "lat": e["org"].lat, "lng": e["org"].lng,
               "constraints": {"category": rescue.category, "max_meals": e["capacity"], "curbside_ok": bool(e["profile"].curbside_ok),
                               "dietary_rules": e["profile"].dietary_rules, "refused_allergens": e["profile"].refused_allergens}}
              for e in eligible]
+    # Score every eligible organization (distance/urgency/demand/capacity/community need) for
+    # transparency, independent of which allocation backend actually decides the split --
+    # see app.intelligence.allocation.rank_candidates. Persisted on each org's own explanation
+    # row so GET /rescues/{id}/matching-explanation can show it later.
+    for ranked in intelligence.rank_candidates(needs, rescue.est_meals, now):
+        explanations[ranked["need"]["organization_id"]].score = ranked["score"]
     allocations, est_alloc, alloc_source = clients.allocate(rescue.est_meals, needs)
     by_id = {e["org"].id: e for e in eligible}
     legs = [(by_id[a["need_id"]], a["meals"]) for a in allocations if a["meals"] > 0]
@@ -262,7 +271,7 @@ def _reason(db, rescue: Rescue, plan: TripPlan, vol_why: Dict[str, int], av_note
     if until and until - arrival_local >= timedelta(hours=24):
         until_text = "open 24 hours"
     else:
-        until_text = f"receiving until {until.strftime('%-I:%M %p')}" if until else "receiving"
+        until_text = f"receiving until {clock.strftime12(until)}" if until else "receiving"
     posted = clock.fmt_local(rescue.created_at)
     if plan.mode == "volunteer":
         v = plan.volunteer
