@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Illustrative demo zone around FIU",
+        "label": "illustrative demo zone",
+        "note": "NOT an official Waymo service area. Drawn by FoodFlow for the simulation. Replace with a sponsor-provided geofence if one is ever available."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-80.420, 25.720], [-80.320, 25.720], [-80.320, 25.800], [-80.420, 25.800], [-80.420, 25.720]
+        ]]
+      }
+    }
+  ]
+}

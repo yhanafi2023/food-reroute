@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS
 from app.db import create_schema
-from app.routes import auth_routes, onboarding, prospects
+from app.idempotency import IdempotencyMiddleware
+from app.routes import auth_routes, onboarding, prospects, rescues, trips
 
 logging.basicConfig(level=logging.INFO)
 
@@ -43,9 +44,10 @@ async def _scheduler():
 
 app = FastAPI(title="FoodFlow API", description="Food rescue logistics: restaurants, volunteers, simulated AVs, receiving orgs.",
               lifespan=lifespan)
+app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False, allow_methods=["*"],
-                   allow_headers=["*"])
-for module in (auth_routes, onboarding, prospects):
+                   allow_headers=["*"], expose_headers=["Idempotent-Replayed"])
+for module in (auth_routes, onboarding, rescues, trips, prospects):
     app.include_router(module.router)
 
 
