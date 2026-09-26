@@ -37,7 +37,7 @@ PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
 _bearer = HTTPBearer(auto_error=False)
 
-
+#def password
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PASSWORD_ITERATIONS)
@@ -45,6 +45,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored: str) -> bool:
+    # Verify the password by hashing it with the same PBKDF2 settings
+    # and comparing the resulting hash with the securely stored hash.
     try:
         scheme, iterations, salt, digest = stored.split("$")
         if scheme != PASSWORD_SCHEME:
@@ -116,12 +118,13 @@ ADMIN = require_role("admin")
 
 
 def mask_phone(phone: str) -> str:
+        # Hide all but the last four digits of the phone number for privacy.
     digits = [c for c in phone if c.isdigit()]
     return f"***-***-{''.join(digits[-4:])}" if len(digits) >= 4 else "not provided"
 
 
 def volunteer_public(user: Optional[User], vehicle: str = "") -> Optional[dict]:
-    """What restaurants and orgs may see about a volunteer: first name, vehicle, masked contact."""
+    # Return only the volunteer information that restaurants and organizations are allowed to see.
     if user is None:
         return None
     return {"first_name": user.first_name or user.name.split(" ")[0], "vehicle": vehicle,
@@ -129,5 +132,6 @@ def volunteer_public(user: Optional[User], vehicle: str = "") -> Optional[dict]:
 
 
 def user_json(u: User) -> dict:
+        # Convert a User object into a dictionary containing the user's basic account and role information.
     return {"id": u.id, "email": u.email, "name": u.name, "first_name": u.first_name, "role": u.role,
             "organization_id": u.organization_id}
