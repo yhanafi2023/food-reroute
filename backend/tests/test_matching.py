@@ -1,0 +1,120 @@
+"""Section 4: eligibility from the intake answers, explanations, volunteer equipment."""
+from datetime import timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import clock
+from app.db import SessionLocal
+from app.main import app
+from app.models import Organization, ReceiverProfile
+from app.seed import reset_database
+from tests.helpers import EMAILS, signin
+
+
+@pytest.fixture()
+def client(fake_clock):
+    reset_database(with_scenarios=False)
+    with TestClient(app) as c:
+        yield c
+
+
+def post(client, h, **kw):
+    b = {"quantity": 2, "unit": "tray", "category": "hot", "attested": True,
+         "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z", **kw}
+    r = client.post("/rescues", json=b, headers=h)
+    assert r.status_code == 200, r.text
+    return r.json()["rescue"]
+
+
+def explain(client, h, rid):
+    e = client.get(f"/rescues/{rid}/matching-explanation", headers=h).json()
+    return e, {x["name"]: x for x in e["ineligible"]}, {x["name"] for x in e["eligible"]}
+
+
+def test_friday_7pm_hot_food_explanations_come_from_intake_answers(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h)  # 24 meals of hot food, no dietary tags, allergens not declared
+    e, bad, good = explain(client, h, r["id"])
+    assert good == {"Demo Night Shelter"}
+    assert bad["Demo Food Bank"]["groups"] == ["closed", "no_hot_food"]  # 7 PM Friday: closed at 5 PM, and no hot food
+    assert any(x["text"] == "does not accept hot food" for x in bad["Demo Food Bank"]["reasons"])
+    assert "no_hot_food" in bad["Demo Community Fridge"]["groups"]
+    halal = {x["code"] for x in bad["Demo Halal Pantry"]["reasons"]}
+    assert {"dietary", "allergens_undeclared", "curbside"} >= halal - {"hot_too_slow"} and "dietary" in halal
+    assert r["trips"][0]["stops"][0]["organization"]["name"] == "Demo Night Shelter"
+
+
+def test_food_bank_is_closed_at_night_and_explains_when_it_opens(client, fake_clock):
+    fake_clock.advance(minutes=3 * 60)  # Friday 10 PM
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h, category="shelf_stable", unit="box", quantity=3)
+    _, bad, good = explain(client, h, r["id"])
+    assert "closed until 9:00 AM tomorrow" in [x["text"] for x in bad["Demo Food Bank"]["reasons"]]
+    assert "Demo Community Fridge" in good  # 24/7
+
+
+def test_halal_pantry_eligible_only_for_declared_halal_peanut_free_food(client, fake_clock):
+    fake_clock.advance(minutes=-4 * 60)  # Friday 3 PM: pantry open, shelter not yet
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h, category="cold", unit="bag", quantity=4, dietary_tags=["halal"], allergens=["dairy"])
+    _, bad, good = explain(client, h, r["id"])
+    assert "Demo Halal Pantry" in good
+    r2 = post(client, h, category="cold", unit="bag", quantity=5, dietary_tags=["halal"], allergens=["peanuts"])
+    _, bad2, _ = explain(client, h, r2["id"])
+    assert any(x["text"] == "does not accept peanuts" for x in bad2["Demo Halal Pantry"]["reasons"])
+
+
+def test_hot_food_too_slow_is_rejected(client):
+    with SessionLocal() as db:
+        shelter = db.query(Organization).filter_by(name="Demo Night Shelter").one()
+        db.get(ReceiverProfile, shelter.id).hot_max_minutes = 5
+        db.commit()
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h)
+    _, bad, good = explain(client, h, r["id"])
+    assert "Demo Night Shelter" not in good and "hot_too_slow" in bad["Demo Night Shelter"]["groups"]
+    assert r["status"] == "posted"  # nobody can take it: stays queued
+
+
+def test_capacity_and_tonights_need(client):
+    org = signin(client, EMAILS["org_staff"])
+    client.post("/orgs/me/need", json={"meals": 0}, headers=org)
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h)
+    _, bad, _ = explain(client, h, r["id"])
+    assert bad["Demo Night Shelter"]["reasons"][0]["code"] == "need_met"
+    client.post("/orgs/me/need", json={"meals": 10}, headers=org)
+    r2 = post(client, h, unit="box", quantity=3)
+    stops = [s for t in r2["trips"] for s in t["stops"]]
+    assert sum(s["allocated_meals"] for s in stops if s["organization"]["name"] == "Demo Night Shelter") <= 10
+
+
+def test_incomplete_org_receives_nothing(client):
+    client.post("/auth/register-organization", json={"kind": "receiver", "organization_name": "Brand New Shelter",
+               "lat": 25.762, "lng": -80.369, "manager_name": "New Manager", "manager_email": "new@shelter.example.com"})
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h)
+    _, bad, good = explain(client, h, r["id"])
+    assert "Brand New Shelter" not in good
+    assert bad["Brand New Shelter"]["reasons"] == [{"code": "onboarding_incomplete",
+                                                    "text": "has not finished the three onboarding questions"}]
+
+
+def test_volunteers_only_get_food_their_equipment_supports(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h, category="cold", unit="bag", quantity=3)
+    vol_trip = [t for t in r["trips"] if t["mode"] == "volunteer"]
+    from app.models import User, VolunteerProfile
+    with SessionLocal() as db:
+        for t in vol_trip:
+            name = t["carrier"]["first_name"]
+            u = db.query(User).filter_by(first_name=name).one()
+            assert db.get(VolunteerProfile, u.id).has_cooler
+
+
+def test_matching_explanation_is_for_restaurant_and_admin(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = post(client, h)
+    assert client.get(f"/rescues/{r['id']}/matching-explanation", headers=signin(client, EMAILS["admin"])).status_code == 200
+    assert client.get(f"/rescues/{r['id']}/matching-explanation", headers=signin(client, EMAILS["org_staff"])).status_code == 403
