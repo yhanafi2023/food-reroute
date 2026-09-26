@@ -1,4 +1,4 @@
-"""Section 4: eligibility from the intake answers, explanations, volunteer equipment."""
+#Given this food donation, which organizations can recieve it, which can't, and can the system explain why/what happened
 from datetime import timedelta
 
 import pytest
@@ -36,7 +36,9 @@ def test_friday_7pm_hot_food_explanations_come_from_intake_answers(client):
     h = signin(client, EMAILS["restaurant_staff"])
     r = post(client, h)  # 24 meals of hot food, no dietary tags, allergens not declared
     e, bad, good = explain(client, h, r["id"])
+    #test expects only Demo... to be eligible for that specific scenario
     assert good == {"Demo Night Shelter"}
+    #resoning behind a rejection
     assert bad["Demo Food Bank"]["groups"] == ["closed", "no_hot_food"]  # 7 PM Friday: closed at 5 PM, and no hot food
     assert any(x["text"] == "does not accept hot food" for x in bad["Demo Food Bank"]["reasons"])
     assert "no_hot_food" in bad["Demo Community Fridge"]["groups"]
