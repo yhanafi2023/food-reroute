@@ -15,6 +15,9 @@ os.environ["DEMO_MODE"] = "true"
 os.environ["ROUTING_PROVIDER"] = "offline"
 os.environ["RUN_SCHEDULER"] = "false"
 os.environ["JWT_SECRET"] = "test-secret-at-least-32-bytes-long-000"
+# Empty (not unset), so backend/.env cannot switch on the real Supabase project; tests that need it patch config.
+for _name in ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "SUPABASE_JWKS_URL"):
+    os.environ[_name] = ""
 os.environ.pop("MAPBOX_ACCESS_TOKEN", None)
 os.environ.pop("SMTP_HOST", None)
 os.environ.pop("TWILIO_ACCOUNT_SID", None)

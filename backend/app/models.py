@@ -74,6 +74,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))  # salted PBKDF2 (app/auth.py), never the password
+    # Supabase Auth user id (a UUID), linked on first Supabase sign-in (app/supabase_auth.py)
+    supabase_user_id: Mapped[Optional[str]] = mapped_column(String(36), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(160))
     first_name: Mapped[str] = mapped_column(String(80), default="")
     role: Mapped[str] = mapped_column(String(24))

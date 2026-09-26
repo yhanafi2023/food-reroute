@@ -51,6 +51,14 @@ SCHEDULER_SECONDS = int(os.getenv("SCHEDULER_SECONDS", "30"))
 # Shared secret for the scheduled jobs endpoint (sent as "Authorization: Bearer <CRON_SECRET>"). Empty: endpoint off.
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
+# Supabase Auth, accepted alongside FoodFlow's own sessions (app/supabase_auth.py). Empty SUPABASE_URL: off.
+# The secret key (sb_secret_...) also authorizes /internal/jobs/run, sent by pg_net in the "apikey" header.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
+SUPABASE_JWKS_URL = os.getenv("SUPABASE_JWKS_URL") or (
+    f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else "")
+
 # Teammate services over HTTP. Empty: use the in-process modules (logistics / intelligence).
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "").rstrip("/")
 ALLOCATION_SERVICE_URL = os.getenv("ALLOCATION_SERVICE_URL", "").rstrip("/")

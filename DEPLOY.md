@@ -27,9 +27,13 @@ The backend's scheduled jobs run through `/internal/jobs/run`, called every minu
    ```bash
    DATABASE_URL="<same session pooler URL>" python -m scripts.create_admin you@yourorg.org "Your Name"
    ```
-5. Supabase Auth, Storage and the Data API are not used. The app connects as the database owner, and the
-   dashboard will warn that row-level security is off on these tables. That is expected: never publish the
-   project's `anon` key, and consider turning the Data API off (**Project Settings → Data API**).
+5. Storage and the Data API are not used. The app connects as the database owner, and the dashboard will warn
+   that row-level security is off on these tables. That is expected: consider turning the Data API off
+   (**Project Settings → Data API**).
+6. Supabase Auth is optional. With `SUPABASE_*` set (below), the API accepts a Supabase access token wherever it
+   accepts its own, and links it on first use to the FoodFlow account with the same email, once Supabase has
+   confirmed that email. The project must use JWT signing keys (**Project Settings → JWT Keys**), not the legacy
+   shared secret. Registration still happens in FoodFlow.
 
 ## 2. Backend on Vercel
 
@@ -44,7 +48,11 @@ The backend's scheduled jobs run through `/internal/jobs/run`, called every minu
    | `DATABASE_URL` | the **transaction pooler** URL (port 6543) |
    | `JWT_SECRET` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` (the app refuses to start without 32+ characters) |
    | `DEMO_MODE` | `false` |
-   | `CRON_SECRET` | another random string (16+ characters) |
+   | `CRON_SECRET` | another random string (16+ characters); optional if pg_net sends `SUPABASE_SECRET_KEY` instead |
+   | `SUPABASE_URL` | `https://<ref>.supabase.co` (optional: turns on Supabase Auth tokens) |
+   | `SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...` (**Project Settings → API Keys**) |
+   | `SUPABASE_SECRET_KEY` | `sb_secret_...`, optional: lets pg_net call the jobs endpoint with `apikey` |
+   | `SUPABASE_JWKS_URL` | optional, defaults to `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` |
    | `CORS_ORIGINS` | `https://<your-web-app>.vercel.app` (comma-separate your custom domain later) |
    | `CORS_ORIGIN_REGEX` | optional, for preview deploys: `https://foodflow-web-[a-z0-9-]+-<team>\.vercel\.app` |
    | `TIMEZONE` | `America/New_York` |
@@ -81,6 +89,18 @@ $$);
 ```
 Check it with `select * from cron.job_run_details order by start_time desc limit 5;` and the `net._http_response`
 table. The secret sits in the job definition, visible to database admins only.
+
+With `SUPABASE_SECRET_KEY` set on the backend, the key can stay in Vault instead of the job definition:
+```sql
+select vault.create_secret('<SUPABASE_SECRET_KEY>', 'foodflow_secret_key');
+select cron.schedule('foodflow-jobs', '* * * * *', $$
+  select net.http_get(
+    url := 'https://<api>.vercel.app/internal/jobs/run',
+    headers := jsonb_build_object('apikey',
+      (select decrypted_secret from vault.decrypted_secrets where name = 'foodflow_secret_key')),
+    timeout_milliseconds := 60000)
+$$);
+```
 
 **Vercel Cron (Pro plan only)**: add `"crons": [{"path": "/internal/jobs/run", "schedule": "* * * * *"}]` to
 `backend/vercel.json`. Vercel sends `CRON_SECRET` itself. On the Hobby plan an every-minute cron fails the deploy.

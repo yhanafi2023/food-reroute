@@ -14,6 +14,9 @@ sign in only while DEMO_MODE is on.
 Throttle: after MAX_FAILURES_PER_EMAIL failed attempts for one email, or MAX_FAILURES_PER_IP
 from one address, within THROTTLE_WINDOW_MIN, sign-in answers 429 until the window passes.
 A successful sign-in clears that email's failures.
+
+Supabase Auth: when SUPABASE_URL is set, a Supabase access token is accepted wherever a FoodFlow token
+is (see app/supabase_auth.py). FoodFlow's own tokens are HS256; Supabase's are ES256/RS256.
 """
 from __future__ import annotations
 
@@ -29,7 +32,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app import clock
+from app import clock, supabase_auth
 from app.config import DEMO_MODE, JWT_EXPIRE_HOURS, JWT_SECRET, SERVERLESS
 from app.db import get_db
 from app.models import ORG_ROLES, RESTAURANT_ROLES, LoginAttempt, User
@@ -100,8 +103,13 @@ def create_token(user: User) -> str:
 
 
 def caller_key(authorization: Optional[str]) -> str:
-    """Stable caller id for idempotency records (user id, or 'anon')."""
+    """Stable caller id for idempotency records (user id, Supabase user id, or 'anon')."""
     if authorization and authorization.lower().startswith("bearer "):
+        if supabase_auth.is_supabase_token(authorization[7:]):
+            try:
+                return f"supabase:{supabase_auth.verify(authorization[7:], check_exp=False)['sub']}"
+            except jwt.PyJWTError:
+                return "anon"
         try:
             payload = jwt.decode(authorization[7:], JWT_SECRET, algorithms=[ALGORITHM],
                                  options={"verify_exp": False})
@@ -114,6 +122,8 @@ def caller_key(authorization: Optional[str]) -> str:
 def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_bearer), db: Session = Depends(get_db)) -> User:
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Please sign in")
+    if supabase_auth.is_supabase_token(creds.credentials):
+        return supabase_auth.current_user(db, creds.credentials)
     try:
         payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM],
                              options={"verify_exp": False})
