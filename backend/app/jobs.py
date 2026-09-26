@@ -35,6 +35,29 @@ def run_jobs(db: Session) -> Dict[str, int]:
     counts = {k: 0 for k in ("vehicle_moves", "av_load_missed", "av_unload_missed", "no_shows", "expired", "warnings",
                              "reroutes", "drafts", "reminders", "rematched", "reports")}
 
+    # expiry first: food past safe_until is closed, never re-queued
+    for rescue in db.query(Rescue).filter(Rescue.status.in_(("posted", "matched", "en_route_pickup")),
+                                          Rescue.is_draft.is_(False)).all():
+        if now >= rescue.safe_until:
+            people = _users(db, rescue.restaurant_org_id)
+            for trip in lifecycle.active_trips(rescue):
+                if trip.volunteer:
+                    people.append(trip.volunteer)
+                for s in trip.stops:
+                    people.extend(_users(db, s.organization_id))
+                lifecycle.end_trip(db, trip, "expired", None, reason="food passed safe_until before pickup")
+            lifecycle.set_rescue_status(db, rescue, "expired", None, reason="passed safe_until before pickup",
+                                        safe_until=rescue.safe_until.isoformat())
+            notify.send(db, people, "expired", "Food expired before pickup",
+                        f"Rescue #{rescue.id} from {rescue.restaurant.name} passed its safe-until time "
+                        f"({clock.fmt_local(rescue.safe_until)}) before pickup and was closed.", dedupe=f"expired:{rescue.id}")
+            counts["expired"] += 1
+        elif rescue.safe_until - now <= timedelta(minutes=EXPIRY_WARNING_MIN) and rescue.status == "posted":
+            if notify.send(db, _users(db, rescue.restaurant_org_id), "expiry_warning", "Food expiring soon",
+                           f"Rescue #{rescue.id} is safe until {clock.fmt_local(rescue.safe_until)} and has no carrier yet.",
+                           dedupe=f"expiry-warn:{rescue.id}"):
+                counts["warnings"] += 1
+
     # simulated vehicles
     for trip in db.query(Trip).filter(Trip.mode != "volunteer", Trip.handoff_state.isnot(None)).all():
         if trip.status in lifecycle.INACTIVE_TRIP:
@@ -72,29 +95,6 @@ def run_jobs(db: Session) -> Dict[str, int]:
                         f"Rescue #{trip.rescue_id} was reassigned because you had not arrived.", dedupe=f"noshow:{trip.id}")
             dispatch.requeue(db, trip.rescue, None, "the volunteer did not arrive", exclude_volunteer=vol)
             counts["no_shows"] += 1
-
-    # expiry before pickup, and warnings
-    for rescue in db.query(Rescue).filter(Rescue.status.in_(("posted", "matched", "en_route_pickup")),
-                                          Rescue.is_draft.is_(False)).all():
-        if now >= rescue.safe_until:
-            people = _users(db, rescue.restaurant_org_id)
-            for trip in lifecycle.active_trips(rescue):
-                if trip.volunteer:
-                    people.append(trip.volunteer)
-                for s in trip.stops:
-                    people.extend(_users(db, s.organization_id))
-                lifecycle.end_trip(db, trip, "expired", None, reason="food passed safe_until before pickup")
-            lifecycle.set_rescue_status(db, rescue, "expired", None, reason="passed safe_until before pickup",
-                                        safe_until=rescue.safe_until.isoformat())
-            notify.send(db, people, "expired", "Food expired before pickup",
-                        f"Rescue #{rescue.id} from {rescue.restaurant.name} passed its safe-until time "
-                        f"({clock.fmt_local(rescue.safe_until)}) before pickup and was closed.", dedupe=f"expired:{rescue.id}")
-            counts["expired"] += 1
-        elif rescue.safe_until - now <= timedelta(minutes=EXPIRY_WARNING_MIN) and rescue.status == "posted":
-            if notify.send(db, _users(db, rescue.restaurant_org_id), "expiry_warning", "Food expiring soon",
-                           f"Rescue #{rescue.id} is safe until {clock.fmt_local(rescue.safe_until)} and has no carrier yet.",
-                           dedupe=f"expiry-warn:{rescue.id}"):
-                counts["warnings"] += 1
 
     # approaching warnings
     for trip in db.query(Trip).filter(Trip.status.in_(("en_route_pickup", "en_route_dropoff"))).all():

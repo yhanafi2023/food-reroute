@@ -258,7 +258,11 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
 def _reason(db, rescue: Rescue, plan: TripPlan, vol_why: Dict[str, int], av_note: str, now: datetime) -> str:
     stop = plan.legs[0]
     until = intake.receiving_until(db, stop.profile, stop.arrival)
-    until_text = f"receiving until {until.strftime('%-I:%M %p')}" if until else "receiving"
+    arrival_local = clock.to_local(stop.arrival).replace(tzinfo=None)
+    if until and until - arrival_local >= timedelta(hours=24):
+        until_text = "open 24 hours"
+    else:
+        until_text = f"receiving until {until.strftime('%-I:%M %p')}" if until else "receiving"
     posted = clock.fmt_local(rescue.created_at)
     if plan.mode == "volunteer":
         v = plan.volunteer
