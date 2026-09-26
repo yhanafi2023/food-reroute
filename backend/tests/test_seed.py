@@ -55,3 +55,18 @@ def test_late_night_simulated_av_delivery_and_missed_window_fallback(seeded):
     r = seeded.get(Rescue, missed.rescue_id)
     modes = [(t.mode, t.status) for t in r.trips]
     assert ("waymo_sim", "reassigned") in modes and ("volunteer", "received") in modes
+
+
+def test_value_history_gives_every_report_line_real_inputs(seeded):
+    from datetime import timedelta
+
+    from app import clock
+    from app.value import report
+    casa = seeded.query(Organization).filter_by(name="Casa Demo Cocina").one()
+    month = (clock.to_local(clock.now()).date().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    r = report.build(seeded, casa.id, month)
+    tot = r["estimated_total_value_this_month"]
+    assert set(tot["includes"]) == {"food_cost_saved", "avoided_hauling", "estimated_tax_saved"}
+    assert r["lines"]["compliance"]["status"] == "records complete"
+    saved = r["lines"]["food_cost_saved_from_prep_changes"]["items"][0]
+    assert (saved["item"], saved["baseline_per_week"], saved["current_per_week"]) == ("Rice and black beans", 3.0, 1.0)

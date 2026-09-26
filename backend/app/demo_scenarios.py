@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import clock, dispatch, handoff, lifecycle, posting
 from app.jobs import run_jobs
-from app.models import Organization, Rescue, Trip, User, VolunteerProfile
+from app.models import Acknowledgment, Organization, Rescue, Trip, User, VolunteerProfile
 
 
 def _user(db: Session, org_name: str) -> User:
@@ -92,7 +92,67 @@ def complete(db: Session, fc, trip: Trip, receipts=None) -> None:
     _receive(db, fc, trip, stop, receipts)
 
 
+def value_history(db: Session) -> Dict[str, str]:
+    """Casa Demo Cocina (FICTIONAL): three full months of posts before the current month.
+    Mondays: rice and black beans, 3 trays until the restaurant marks the prep suggestion 'tried it'
+    at the end of month 2, then 1 tray in month 3. Every other Thursday: 1 half pan of roast chicken.
+    All posts go through matching, pickup, delivery and receipt; the shelter signs acknowledgments."""
+    from app.models import MenuItem, RecoveryAgreement
+    from app.tax import acks
+    from app.value import insights
+
+    today = clock.to_local(clock.now()).date()
+    m3_end = today.replace(day=1)
+    m3 = (m3_end - timedelta(days=1)).replace(day=1)
+    m2 = (m3 - timedelta(days=1)).replace(day=1)
+    m1 = (m2 - timedelta(days=1)).replace(day=1)
+    casa = db.query(Organization).filter_by(name="Casa Demo Cocina").one()
+    staff = _user(db, "Casa Demo Cocina")
+    rice = db.query(MenuItem).filter_by(organization_id=casa.id, name="Rice and black beans").one()
+    chicken = db.query(MenuItem).filter_by(organization_id=casa.id, name="Roast chicken").one()
+    casa.restaurant_profile.hauling_cost_per_lb = 0.08  # FICTIONAL: entered by the demo restaurant
+    last_monday_m2 = max(m2 + timedelta(days=i) for i in range(31) if (m2 + timedelta(days=i)).month == m2.month
+                         and (m2 + timedelta(days=i)).weekday() == 0)
+    tried_day = last_monday_m2 + timedelta(days=1)
+    shelter_mgr = db.query(User).filter_by(email="manager@shelter-demo.example.com").one()
+    fc = clock.FakeClock(clock.local_to_utc(datetime.combine(m1, datetime.min.time())))
+    with clock.use(fc):
+        day, thursday_n, tried_done = m1, 0, False
+        while day < m3_end:
+            if day >= tried_day and not tried_done:
+                fc.current = clock.local_to_utc(datetime.combine(tried_day, datetime.min.time()) + timedelta(hours=10))
+                insights.tried(db, casa.id, rice.id, 0, staff.id, "prepare 2 fewer trays of rice on Mondays")
+                tried_done = True
+            posts = []
+            if day.weekday() == 0:
+                posts.append((rice, 3 if day < tried_day else 1))
+            if day.weekday() == 3:
+                thursday_n += 1
+                if thursday_n % 2 == 1:
+                    posts.append((chicken, 1))
+            for menu, qty in posts:
+                fc.current = clock.local_to_utc(datetime.combine(day, datetime.min.time()) + timedelta(hours=21))
+                body = posting.QuickPost(quantity=qty, unit=menu.unit, category=menu.category, attested=True, allergens=[],
+                                         menu_item_id=menu.id, description=menu.name,
+                                         pickup_deadline=clock.now() + timedelta(minutes=90))
+                rescue = posting.create_post(db, staff, body)["rescue"]
+                dispatch.run_matching(db, rescue, staff)
+                for t in _trips(db, rescue, "matched"):
+                    complete(db, fc, t)
+                fc.advance(minutes=60 * 12)
+                for a in db.query(Acknowledgment).filter_by(donor_org_id=casa.id, status="pending").all():
+                    acks.sign(db, a, shelter_mgr, "Grace Demo", "Shelter manager")
+            day += timedelta(days=1)
+        shelter = db.query(Organization).filter_by(name="Demo Night Shelter").one()
+        db.add(RecoveryAgreement(restaurant_org_id=casa.id, receiver_org_id=shelter.id, signed_date=m1,
+                                 document_url="https://example.com/fictional-demo-agreement.pdf", created_at=clock.now()))
+    db.commit()
+    return {"month_1": m1.strftime("%Y-%m"), "month_2": m2.strftime("%Y-%m"), "month_3": m3.strftime("%Y-%m"),
+            "tried_it": tried_day.isoformat()}
+
+
 def run_all(db: Session, ids: Dict[str, int]) -> None:
+    value_history(db)
     yesterday = (clock.to_local(clock.now()) - timedelta(days=1)).date()
     midnight = datetime.combine(yesterday, datetime.min.time())
     fc = clock.FakeClock(clock.local_to_utc(midnight + timedelta(hours=18)))
