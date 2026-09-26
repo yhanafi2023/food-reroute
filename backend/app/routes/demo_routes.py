@@ -1,20 +1,18 @@
-"""Demo controls: persona sign-in, clock, reset. Only mounted when DEMO_MODE=true; fictional data only."""
+"""Demo controls: clock and reset. Only mounted when DEMO_MODE=true; fictional data only.
+
+Sign-in is unchanged: demo accounts sign in through /auth/request-code and /auth/verify like everyone else.
+Changing the clock or resetting requires an admin.
+"""
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from app import demo
-from app.auth import create_token, user_json
-from app.db import get_db
+from app.auth import ADMIN
 from app.models import User
 
 router = APIRouter(prefix="/demo", tags=["demo"])
-
-
-class SigninIn(BaseModel):
-    persona: Literal["restaurant", "volunteer", "org", "coordinator"]
 
 
 class ClockIn(BaseModel):
@@ -28,17 +26,8 @@ def get_state():
     return demo.state()
 
 
-@router.post("/signin")
-def signin(body: SigninIn, db: Session = Depends(get_db)):
-    """One-click sign-in as a fictional demo account (no code needed; DEMO_MODE only)."""
-    user = db.query(User).filter_by(email=demo.PERSONAS[body.persona]["email"], is_demo_account=True).first()
-    if user is None:
-        raise HTTPException(404, "Demo accounts are missing; reset the demo")
-    return {"token": create_token(user), "user": user_json(user)}
-
-
 @router.post("/clock")
-def set_clock(body: ClockIn):
+def set_clock(body: ClockIn, _admin: User = Depends(ADMIN)):
     d = demo.current()
     if d is None:
         raise HTTPException(409, "The demo is using the real clock (DEMO_CLOCK_START=real)")
@@ -56,5 +45,5 @@ def set_clock(body: ClockIn):
 
 
 @router.post("/reset")
-def reset():
+def reset(_admin: User = Depends(ADMIN)):
     return demo.reset()

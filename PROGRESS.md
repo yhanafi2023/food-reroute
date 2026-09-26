@@ -31,22 +31,27 @@ Last updated 2026-09-26.
   comparison, donor tax estimates and acknowledgments, SB 1383 records, org reports, volunteer hours,
   notifications. 108 backend tests passing. Docs in `docs/`.
 
-## In progress
+## ShellHacks build (branch `shellhacks-demo`)
 
-- Nothing on the backend.
-
-## Needs a teammate (frontend, Dev 1)
-
-The backend API changed; the Next.js app in `frontend/` and `e2e/` still target the old API and will not work
-until updated. Key changes:
-- Sign-in: `POST /auth/request-code` then `POST /auth/verify` (code or magic-link token). No passwords.
-  Demo accounts and the demo code are listed in `backend/app/seed.py`.
-- Roles: restaurant_staff, restaurant_manager, volunteer, org_staff, org_manager, admin.
-- Posting: `POST /rescues` with quantity, unit, category, pickup_deadline, attested (see README API overview).
-- Lifecycle: posted, matched, en_route_pickup, picked_up, en_route_dropoff, delivered, received (+ exits);
-  carriers act on `/trips/{id}/...` and `/stops/{id}/...` with codes; orgs confirm with `/stops/{id}/receipt`.
-- Receiving orgs must complete `PUT /orgs/me/intake/Q1..Q3` before they receive anything.
-- DEMO.md, PITCH.md and DEVPOST.md describe the previous flow and need a pass after the frontend is updated.
+- **P0 done**: the frontend was rewritten against the current API (passwordless sign-in via the existing
+  `/auth/request-code` and `/auth/verify`, unchanged). There are four role workspaces: restaurant `/restaurant`,
+  volunteer `/volunteer`, receiving org `/org` and coordinator `/coordinator`. It also adds the magic-link page
+  `/auth/callback` and the public partner page `/partners/[slug]`, both of which the backend links to. The
+  landing page and a role picker at `/demo` round it out.
+  - Backend additions (no existing endpoint changed):
+    - a demo clock anchored at Friday 2026-09-25 7:00 PM Miami (`DEMO_CLOCK_START`, `real` to turn it off);
+    - `GET /demo/state`, admin-only `POST /demo/clock` and `POST /demo/reset` (DEMO_MODE only);
+    - `GET /time`.
+  - Playwright: post, match, pickup with code (a wrong code is refused), drop off with code, org receipt, and a
+    375px check. 3 of 3 runs passed. The measured restaurant posting time, from form ready to post confirmed with
+    scripted clicks, was 162 to 164 ms. That is API plus UI latency, not a human's time.
+  - Known issue: requests that arrive while a reset rebuilds the database can briefly fail
+    (`no such table`); pages retry on their own.
+- **Next**:
+  - P1: coordinator map and heatmap, "Why this assignment?", ETA honesty, and the Tiger Data setup and hypertables.
+  - P2: disruption panel, replay slider, live ops panel and Hot Zones (section 13).
+  - P3: fair comparison, compression stats and the reliability aggregate.
+  - P4: forecast presentation.
 
 ## Blocked / needs a person
 

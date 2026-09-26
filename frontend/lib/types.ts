@@ -153,6 +153,5 @@ export interface DemoState {
   now: string;
   local_time: string;
   start_local: string | null;
-  personas: Record<Workspace, string>;
   label: string;
 }

@@ -9,8 +9,9 @@ import { HOME, useAuth, WORKSPACE_FOR_ROLE } from "@/lib/auth";
 function LoginForm() {
   const { requestCode, verifyCode } = useAuth();
   const router = useRouter();
-  const next = useSearchParams().get("next");
-  const [email, setEmail] = useState("");
+  const params = useSearchParams();
+  const next = params.get("next");
+  const [email, setEmail] = useState(params.get("email") ?? "");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);

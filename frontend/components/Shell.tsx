@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { DemoState, Workspace } from "@/lib/types";
@@ -14,12 +14,21 @@ const WORKSPACE_NAME: Record<Workspace, string> = {
   coordinator: "Coordinator",
 };
 
+type Theme = "light" | "dark" | "system";
+
+function readTheme(): Theme {
+  const t = document.documentElement.dataset.theme;
+  return t === "light" || t === "dark" ? t : "system";
+}
+
+function subscribeTheme(onChange: () => void) {
+  const obs = new MutationObserver(onChange);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => obs.disconnect();
+}
+
 function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
-  useEffect(() => {
-    const t = document.documentElement.dataset.theme;
-    setTheme(t === "light" || t === "dark" ? t : "system");
-  }, []);
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "system" as Theme);
   const next = theme === "system" ? "dark" : theme === "dark" ? "light" : "system";
   const apply = () => {
     if (next === "system") delete document.documentElement.dataset.theme;
@@ -30,7 +39,6 @@ function ThemeToggle() {
     } catch {
       // storage blocked: the choice lasts for this page only
     }
-    setTheme(next);
   };
   return (
     <button type="button" className="btn btn-ghost" onClick={apply} aria-label={`Theme: ${theme}. Switch to ${next}`}>
@@ -44,8 +52,9 @@ export function DemoBar() {
   const [state, setState] = useState<DemoState | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     let stopped = false;
@@ -83,7 +92,7 @@ export function DemoBar() {
       <span>
         Demo clock: <strong data-testid="demo-clock">{state.local_time}</strong> {state.running ? "" : "(paused)"}
       </span>
-      {state.demo_clock ? (
+      {isAdmin && state.demo_clock ? (
         <>
           <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => act("/demo/clock", { action: state.running ? "pause" : "play" })}>
             {state.running ? "Pause" : "Play"}
@@ -93,19 +102,21 @@ export function DemoBar() {
           </button>
         </>
       ) : null}
-      <button
-        type="button"
-        className="btn btn-ghost"
-        disabled={busy}
-        onClick={async () => {
-          if (await act("/demo/reset")) {
-            logout();
-            router.push("/demo");
-          }
-        }}
-      >
-        Reset demo
-      </button>
+      {isAdmin ? (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy}
+          onClick={async () => {
+            if (await act("/demo/reset")) {
+              logout();
+              router.push("/demo");
+            }
+          }}
+        >
+          Reset demo
+        </button>
+      ) : null}
       {note ? <span role="alert">{note}</span> : null}
     </div>
   );

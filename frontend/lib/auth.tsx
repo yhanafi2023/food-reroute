@@ -25,7 +25,7 @@ interface AuthState {
   ready: boolean;
   requestCode: (email: string) => Promise<void>;
   verifyCode: (email: string, code: string) => Promise<User>;
-  demoSignin: (persona: Workspace) => Promise<User>;
+  verifyLink: (token: string) => Promise<User>;
   logout: () => void;
 }
 
@@ -69,8 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, code: string) => accept(await api<AuthResponse>("/auth/verify", { method: "POST", body: { email, code } })),
     [accept],
   );
-  const demoSignin = useCallback(
-    async (persona: Workspace) => accept(await api<AuthResponse>("/demo/signin", { method: "POST", body: { persona } })),
+  const verifyLink = useCallback(
+    async (token: string) => accept(await api<AuthResponse>("/auth/verify", { method: "POST", body: { token } })),
     [accept],
   );
   const logout = useCallback(() => {
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, ready, requestCode, verifyCode, demoSignin, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, ready, requestCode, verifyCode, verifyLink, logout }}>{children}</AuthContext.Provider>
   );
 }
 

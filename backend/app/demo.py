@@ -17,15 +17,6 @@ from app import clock
 
 DEFAULT_START_LOCAL = "2026-09-25T19:00"
 
-# persona -> demo account email (all fictional, see app/seed.py)
-PERSONAS: Dict[str, Dict[str, str]] = {
-    "restaurant": {"email": "staff@casa-demo.example.com", "label": "Restaurant staff, Casa Demo Cocina"},
-    "volunteer": {"email": "marcus@volunteer-demo.example.com", "label": "Volunteer driver, Marcus"},
-    "org": {"email": "staff@shelter-demo.example.com", "label": "Receiving staff, Demo Night Shelter"},
-    "coordinator": {"email": "admin@foodflow-demo.example.com", "label": "Coordinator (admin)"},
-}
-
-
 class DemoClock(clock.FakeClock):
     """A fake clock that moves with real time (times `rate`) unless paused."""
 
@@ -72,7 +63,9 @@ _demo: Optional[DemoClock] = None
 
 
 def start_utc() -> datetime:
-    raw = os.getenv("DEMO_CLOCK_START", DEFAULT_START_LOCAL)
+    raw = os.getenv("DEMO_CLOCK_START", "").strip()
+    if not raw or raw.lower() == "real":
+        raw = DEFAULT_START_LOCAL
     return clock.local_to_utc(datetime.fromisoformat(raw))
 
 
@@ -96,7 +89,6 @@ def state() -> dict:
     return {"demo_clock": d is not None, "running": d.running if d else True, "rate": d.rate if d else 1.0,
             "now": now.replace(microsecond=0).isoformat() + "Z", "local_time": clock.to_local(now).strftime("%a %b %-d, %-I:%M %p"),
             "start_local": clock.to_local(d.start_utc).strftime("%a %b %-d, %-I:%M %p") if d else None,
-            "personas": {k: v["label"] for k, v in PERSONAS.items()},
             "label": "Fictional demo data on a demo clock" if d else "Fictional demo data"}
 
 

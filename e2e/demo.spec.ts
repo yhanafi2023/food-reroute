@@ -1,90 +1,100 @@
-// The 2 minute demo from DEMO.md, click for click. The demo is "done" when this passes 3 times in a row:
-//   npm run test:3x
+// The donation demo, click for click, against the real API (fictional seed, demo clock at Friday 7 PM Miami).
+// Done when it passes 3 runs in a row: npm run test:3x
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 const API = "http://localhost:8000";
+// Demo accounts accept this code only while the server runs with DEMO_MODE=true (backend/app/seed.py).
+const DEMO_CODE = "246810";
 
-async function asRole(browser: Browser, button: string): Promise<Page> {
-  const page = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
-  await page.goto("/login");
-  await page.getByRole("button", { name: `Demo login as ${button}` }).click();
-  return page;
-}
-
-async function loginWithForm(browser: Browser, email: string): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("demo1234");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
+async function signIn(browser: Browser, email: string, next: string, viewport = { width: 1440, height: 1000 }): Promise<Page> {
+  const page = await (await browser.newContext({ viewport })).newPage();
+  await page.goto(`/login?email=${encodeURIComponent(email)}&next=${next}`);
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await page.getByLabel("6 digit code").fill(DEMO_CODE);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${next}$`));
   return page;
 }
 
 test.beforeEach(async ({ request }) => {
-  const login = await request.post(`${API}/auth/login`, { data: { email: "admin@demo.com", password: "demo1234" } });
-  const { token } = await login.json();
+  await request.post(`${API}/auth/request-code`, { data: { email: "admin@foodflow-demo.example.com" } });
+  const verify = await request.post(`${API}/auth/verify`, { data: { email: "admin@foodflow-demo.example.com", code: DEMO_CODE } });
+  expect(verify.ok()).toBeTruthy();
+  const { token } = await verify.json();
   const reset = await request.post(`${API}/demo/reset`, { headers: { Authorization: `Bearer ${token}` } });
   expect(reset.ok()).toBeTruthy();
 });
 
-test("FoodFlow demo click path", async ({ page, browser }) => {
-  // 1. Landing page
+test("donation: post, match, pickup with code, drop off with code, receipt", async ({ page, browser }) => {
+  // Landing
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Food shouldn't go to waste when people need it." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Move surplus food to local organizations with less coordination." })).toBeVisible();
+  await page.getByRole("link", { name: "Try the donation demo" }).click();
+  await expect(page).toHaveURL(/\/demo$/);
+  await expect(page.getByRole("link", { name: "Sign in as restaurant" })).toBeVisible();
 
-  // 2. Restaurant posts 50 meals
-  const restaurant = await asRole(browser, "Restaurant");
-  await expect(restaurant).toHaveURL(/\/restaurant\/dashboard/);
+  // Restaurant posts 3 trays of hot food. Timed from the form being ready to the post being confirmed.
+  const restaurant = await signIn(browser, "staff@casa-demo.example.com", "/restaurant");
+  await expect(restaurant.getByRole("heading", { name: "Donate surplus food" })).toBeVisible();
+  const t0 = Date.now();
+  await restaurant.getByRole("group", { name: "Unit" }).getByRole("button", { name: "Trays" }).click();
+  await restaurant.getByRole("group", { name: "Food type" }).getByRole("button", { name: "Hot" }).click();
   await restaurant.getByRole("checkbox").check();
-  await restaurant.getByRole("button", { name: "Find a match" }).click();
-  await expect(restaurant.getByText("Finding the most efficient rescue match...")).toBeVisible();
+  await restaurant.getByRole("button", { name: "Post donation" }).click();
+  await expect(restaurant.getByRole("status").filter({ hasText: "Posted." })).toBeVisible();
+  const postingMs = Date.now() - t0;
+  test.info().annotations.push({ type: "restaurant posting time (ms)", description: String(postingMs) });
+  console.log(`restaurant posting time: ${postingMs} ms (form ready to post confirmed, scripted clicks)`);
 
-  // 3. Match found: Marcus, 30 to the food bank and 20 to the shelter, with "Why this match?"
-  const match = restaurant.getByRole("region", { name: "Match found" });
-  await expect(match.getByText("Marcus").first()).toBeVisible();
-  await expect(match.getByRole("list", { name: "Stops" })).toContainText("Community Food Bank");
-  await expect(match.getByRole("list", { name: "Stops" })).toContainText("Hope Shelter");
-  await expect(restaurant.getByRole("heading", { name: "Why this match?" })).toBeVisible();
-  await expect(restaurant.getByText("CHOSEN")).toBeVisible();
+  const card = restaurant.locator("article").filter({ hasText: "3 trays" }).first();
+  await expect(card.getByTestId("rescue-status")).toHaveText("Carrier assigned");
+  await expect(card.getByText("Marcus")).toBeVisible();
+  const pickupCode = (await card.getByTestId("pickup-code").textContent())!.trim();
+  expect(pickupCode).toMatch(/^\d{4,8}$/);
 
-  // 4. Driver accepts and steps through every status; the restaurant sees a live ML ETA to its door
-  const driver = await asRole(browser, "Driver");
-  await expect(driver.getByText("New food rescue")).toBeVisible();
-  await expect(driver.getByText("50 meals from ABC Restaurant")).toBeVisible();
-  await driver.getByRole("button", { name: "Accept" }).click();
-  await expect(restaurant.getByText("Driver to pickup")).toBeVisible();
-  await expect(restaurant.getByText(/About \d+ min/)).toBeVisible();
-  for (const step of ["I arrived at the restaurant", "I picked up the food", "Start delivering", "Mark delivered"]) {
-    await driver.getByRole("button", { name: step }).click();
-    await expect(driver.getByRole("button", { name: step })).toHaveCount(0);
-  }
-  await expect(driver.getByText("awaiting confirmation")).toBeVisible();
+  // Volunteer accepts and picks up with the restaurant's code
+  const volunteer = await signIn(browser, "marcus@volunteer-demo.example.com", "/volunteer");
+  const offer = volunteer.locator("article").filter({ hasText: "New rescue offer" }).first();
+  await expect(offer).toBeVisible();
+  await offer.getByRole("button", { name: "Accept" }).click();
+  await expect(card.getByTestId("rescue-status")).toHaveText("On the way to pick up");
 
-  // 5. The restaurant's card updated live (polling, no refresh)
-  await expect(restaurant.getByRole("list", { name: "Delivery status" })).toBeVisible();
+  // A wrong code is refused (and audited server-side)
+  await volunteer.getByLabel("Pickup code").fill("0000");
+  await volunteer.getByRole("button", { name: "Confirm pickup" }).click();
+  await expect(volunteer.getByRole("alert").filter({ hasText: "pickup code does not match" })).toBeVisible();
+  await volunteer.getByLabel("Pickup code").fill(pickupCode);
+  await volunteer.getByRole("button", { name: "Confirm pickup" }).click();
+  await expect(card.getByTestId("rescue-status")).toHaveText("On the way to drop off");
 
-  // 6. Both organizations confirm their drop off
-  const org = await asRole(browser, "Organization");
-  await expect(org.getByText("30 meals incoming")).toBeVisible();
-  await org.getByRole("button", { name: "Confirm Receipt of 30 meals" }).click();
-  await expect(org.getByText("Confirmed 30 meals. Thank you!")).toBeVisible();
-  const shelter = await loginWithForm(browser, "shelter@demo.com");
-  await shelter.getByRole("button", { name: "Confirm Receipt of 20 meals" }).click();
-  await expect(shelter.getByText("Confirmed 20 meals. Thank you!")).toBeVisible();
+  // The shelter sees it coming with its drop-off code
+  const org = await signIn(browser, "staff@shelter-demo.example.com", "/org");
+  const incoming = org.locator("article").filter({ hasText: "Casa Demo Cocina" }).filter({ has: org.getByTestId("dropoff-code") }).first();
+  const dropoffCode = (await incoming.getByTestId("dropoff-code").textContent())!.trim();
 
-  // 7. The public impact page counts only real deliveries: the demo accounts are fictional, so it stays at 0
-  await page.goto("/impact");
-  await expect(page.getByText(/Only real deliveries confirmed by a receiving organization count here/)).toBeVisible();
-  await expect(page.getByText("Meals rescued (real, confirmed)")).toBeVisible();
+  await volunteer.getByLabel("Drop-off code").fill(dropoffCode);
+  await volunteer.getByRole("button", { name: "Confirm drop off" }).click();
+  await expect(volunteer.getByText("Delivered. The organization will confirm what it accepted.")).toBeVisible();
+  await expect(card.getByTestId("rescue-status")).toHaveText("Delivered, waiting for receipt");
 
-  // 8. Admin runs Simulate Tonight
-  const admin = await asRole(browser, "Admin");
-  await expect(admin.getByRole("heading", { name: "Network" })).toBeVisible();
-  await expect(admin.getByText("Driver ETA model")).toBeVisible();
-  await expect(admin.getByText("Needs real data")).toBeVisible(); // no synthetic surplus forecast is shown
-  await admin.getByRole("button", { name: "Simulate Tonight" }).click();
-  await expect(admin.getByText(/ABC Restaurant posts 50 meals/)).toBeVisible();
-  await expect(admin.getByText(/Marcus matched: 30 to Community Food Bank, 20 to Hope Shelter|Marcus matched: 20 to Hope Shelter, 30 to Community Food Bank/)).toBeVisible();
-  await expect(admin.getByText(/Delivered 50 meals/)).toBeVisible({ timeout: 20_000 });
-  await expect(admin.getByRole("button", { name: "Back to live network" })).toBeVisible({ timeout: 70_000 });
+  // The shelter confirms receipt; its records need temperature and the receiver's name
+  const toConfirm = org.locator("article").filter({ hasText: "Casa Demo Cocina" }).filter({ has: org.getByRole("button", { name: "Confirm receipt" }) }).first();
+  await toConfirm.getByLabel(/Temperature at receipt/).fill("145");
+  await toConfirm.getByLabel(/Received by/).fill("Tomas");
+  await toConfirm.getByRole("button", { name: "Confirm receipt" }).click();
+  await expect(org.getByText(/36 of 36 meals accepted/).first()).toBeVisible();
+
+  // The restaurant sees the confirmed donation
+  await restaurant.getByText(/^Recent/).click();
+  await expect(restaurant.locator("article").filter({ hasText: "3 trays" }).first().getByTestId("rescue-status")).toHaveText("Received");
+});
+
+test("mobile: restaurant form fits 375px with 44px targets", async ({ browser }) => {
+  const page = await signIn(browser, "staff@casa-demo.example.com", "/restaurant", { width: 375, height: 800 });
+  const post = page.getByRole("button", { name: "Post donation" });
+  await expect(post).toBeVisible();
+  const box = await post.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(scrollW).toBeLessThanOrEqual(375);
 });

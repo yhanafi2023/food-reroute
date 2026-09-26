@@ -10,8 +10,8 @@ sidewalk robots. Built for ShellHacks 2026 at FIU; demo city Miami-Dade.
 - Organization interview template: [docs/ORG_RESEARCH.md](docs/ORG_RESEARCH.md)
 - What is real, simulated or fictional: [DATA_SOURCES.md](DATA_SOURCES.md)
 
-> Status: the backend implements the practicality spec. The Next.js frontend in `frontend/` still targets the
-> previous API and needs updating (see [PROGRESS.md](PROGRESS.md)).
+> Status: backend and frontend both use the current API. The Playwright demo (`e2e/`) passes 3 runs in a row.
+> See [PROGRESS.md](PROGRESS.md).
 
 ## Setup
 
