@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 // Starts the backend (demo mode, offline routing) and the built frontend unless they are already running.
 export default defineConfig({
   testDir: ".",
+  testIgnore: process.env.SCREENSHOTS ? [] : ["screenshots.spec.ts"],
   timeout: 180_000,
   expect: { timeout: 15_000 },
   workers: 1,

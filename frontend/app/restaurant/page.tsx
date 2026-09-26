@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import RescueMap from "@/components/RescueMap";
 import { RescueCard } from "@/components/RescueCard";
+import RescueSequence from "@/components/RescueSequence";
+import WhyThisAssignment from "@/components/WhyThisAssignment";
 import { Shell } from "@/components/Shell";
 import { Empty, ErrorNote, Loading } from "@/components/States";
 import { api } from "@/lib/api";
@@ -132,8 +135,8 @@ function DonateForm({ onPosted }: { onPosted: (r: PostResult) => void }) {
         <span>What is it? (optional)</span>
         <input className="input" value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} placeholder="Rice and black beans" />
       </label>
-      <label className="row" style={{ alignItems: "flex-start", gap: "var(--s-3)", minHeight: 44 }}>
-        <input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} style={{ width: 24, height: 24, marginTop: 2 }} />
+      <label className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap", gap: "var(--s-3)", minHeight: 44 }}>
+        <input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} style={{ width: 24, height: 24, marginTop: 2, flex: "none" }} />
         <span>I confirm this food was held at a safe temperature and is safe to donate.</span>
       </label>
       <button type="submit" className="btn btn-primary btn-lg" disabled={busy || !attested}>
@@ -164,6 +167,7 @@ export default function RestaurantPage() {
         />
         <section className="stack" aria-labelledby="tonight">
           <h2 id="tonight">Tonight</h2>
+          {last ? <RescueSequence key={last.rescue.id} result={last} /> : null}
           {last ? (
             <div role="status" className={last.matching.matched ? "alert alert-good" : "alert alert-info"}>
               {last.matching.matched ? `Posted. A carrier is assigned to donation #${last.rescue.id}.` : `Posted donation #${last.rescue.id}. Looking for a carrier.`}
@@ -175,8 +179,15 @@ export default function RestaurantPage() {
           {error && !data ? <ErrorNote message={error} onRetry={refresh} /> : null}
           {!data && !error ? <Loading label="Loading your donations" /> : null}
           {data && active.length === 0 ? <Empty title="Nothing posted right now">Post surplus food and it shows up here with its pickup code.</Empty> : null}
+          {active.length ? <RescueMap rescues={active} height={280} /> : null}
           {active.map((r) => (
-            <RescueCard key={r.id} rescue={r} now={now} />
+            <div key={r.id} className="stack">
+              <RescueCard rescue={r} now={now} />
+              <details>
+                <summary style={{ minHeight: 44, cursor: "pointer" }}>Why this assignment?</summary>
+                <WhyThisAssignment rescue={r} />
+              </details>
+            </div>
           ))}
           {done.length ? (
             <details>

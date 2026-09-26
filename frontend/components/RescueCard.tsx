@@ -1,5 +1,5 @@
 "use client";
-import { CARRIER_LABEL, qty, relative, statusLabel, time } from "@/lib/format";
+import { CARRIER_LABEL, minutesBetween, qty, relative, statusLabel, time } from "@/lib/format";
 import type { Rescue, Trip } from "@/lib/types";
 
 const STEPS: { key: string; label: string }[] = [
@@ -56,11 +56,50 @@ export function CarrierLine({ trip }: { trip: Trip }) {
   );
 }
 
+// >=20 min of slack: comfortable. 10-19: tight but workable. Under 10: at risk. (Thresholds from 238b63d.)
+function marginClass(margin: number) {
+  if (margin >= 20) return "is-good";
+  if (margin >= 10) return "is-warn";
+  return "is-bad";
+}
+
+// Pickup ETA, time left before the pickup deadline, and the slack between them, from the rescue's recorded times.
+function MetricRow({ rescue, etaPickup, now }: { rescue: Rescue; etaPickup: string; now: string }) {
+  const eta = Math.max(0, minutesBetween(now, etaPickup));
+  const deadline = Math.max(0, minutesBetween(now, rescue.pickup_deadline));
+  const margin = minutesBetween(etaPickup, rescue.pickup_deadline);
+  return (
+    <div className="match-metric-row">
+      <div className="match-metric">
+        <span className="eyebrow">Pickup ETA</span>
+        <span className="match-metric-value">
+          {eta}
+          <span className="text-sm font-semibold text-ink-3"> min</span>
+        </span>
+      </div>
+      <div className="match-metric">
+        <span className="eyebrow">Pickup deadline</span>
+        <span className="match-metric-value">
+          {deadline}
+          <span className="text-sm font-semibold text-ink-3"> min</span>
+        </span>
+      </div>
+      <div className={`match-metric ${marginClass(margin)}`}>
+        <span className="eyebrow">Safety margin</span>
+        <span className="match-metric-value">
+          {margin}
+          <span className="text-sm font-semibold text-ink-3"> min</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function RescueCard({ rescue, now, showCode = true }: { rescue: Rescue; now: string | null; showCode?: boolean }) {
   const trip = activeTrip(rescue);
   const beforePickup = ["posted", "matched", "en_route_pickup"].includes(rescue.status);
   return (
-    <article className="panel stack" aria-label={`Donation ${rescue.id}`} data-testid={`rescue-${rescue.id}`}>
+    <article className="panel stack match-card-enter" aria-label={`Donation ${rescue.id}`} data-testid={`rescue-${rescue.id}`}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3>
           {qty(rescue.quantity, rescue.unit)} ({rescue.est_meals} meals est.)
@@ -81,24 +120,47 @@ export function RescueCard({ rescue, now, showCode = true }: { rescue: Rescue; n
         </div>
       ) : null}
       {trip && !["cancelled", "reassigned", "expired"].includes(trip.status) ? (
-        <div className="stack" style={{ gap: "var(--s-2)" }}>
-          <p>
-            <CarrierLine trip={trip} />
-            {trip.eta_pickup && beforePickup ? (
-              <>
-                , pickup around <strong>{time(trip.eta_pickup)}</strong>
-              </>
-            ) : null}
-          </p>
-          <ul className="small" aria-label="Drop offs" style={{ paddingLeft: "var(--s-5)", margin: 0 }}>
+        <>
+          <div className="match-flow" aria-label="Route">
+            <div className="match-flow-node is-restaurant">
+              <span className="match-flow-icon" aria-hidden="true">
+                🍽️
+              </span>
+              <div className="match-flow-body">
+                <span className="match-flow-name uppercase">{rescue.restaurant.name}</span>
+                <span className="chip">Pickup{trip.eta_pickup && beforePickup ? ` ${time(trip.eta_pickup)}` : ""}</span>
+              </div>
+            </div>
+            <div className="match-flow-arrow" aria-hidden="true" />
+            <div className="match-flow-node is-driver">
+              <span className="match-flow-icon" aria-hidden="true">
+                🚗
+              </span>
+              <div className="match-flow-body">
+                <CarrierLine trip={trip} />
+                <span className="chip chip-accent">{statusLabel(trip.status)}</span>
+              </div>
+            </div>
             {trip.stops.map((s) => (
-              <li key={s.id}>
-                {s.allocated_meals} meals to {s.organization.name}: {statusLabel(s.status)}
-                {s.received_meals != null ? `, ${s.received_meals} accepted` : ""}
-              </li>
+              <div key={s.id}>
+                <div className="match-flow-arrow" aria-hidden="true" />
+                <div className="match-flow-node is-org">
+                  <span className="match-flow-icon" aria-hidden="true">
+                    🏢
+                  </span>
+                  <div className="match-flow-body">
+                    <span className="match-flow-name">{s.organization.name}</span>
+                    <span className="chip chip-good">
+                      {s.allocated_meals} meals · {statusLabel(s.status)}
+                      {s.received_meals != null ? `, ${s.received_meals} accepted` : ""}
+                    </span>
+                  </div>
+                </div>
+              </div>
             ))}
-          </ul>
-        </div>
+          </div>
+          {beforePickup && trip.eta_pickup && now ? <MetricRow rescue={rescue} etaPickup={trip.eta_pickup} now={now} /> : null}
+        </>
       ) : rescue.status === "posted" ? (
         <p className="alert alert-info">No carrier yet. FoodFlow retries every 2 minutes and tells you when one is assigned.</p>
       ) : null}

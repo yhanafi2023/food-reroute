@@ -155,3 +155,12 @@ export interface DemoState {
   start_local: string | null;
   label: string;
 }
+
+export interface MatchingExplanation {
+  rescue_id: number;
+  attempt: number | null;
+  status: string;
+  eligible: { organization_id: number; name: string; estimated_arrival: string | null }[];
+  ineligible: { organization_id: number; name: string; reasons: { code: string; text: string }[]; groups: string[]; estimated_arrival: string | null }[];
+  trips: { id: number; mode: string; simulated: boolean; mode_reason: string; status: string }[];
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Brand } from "@/components/Shell";
 
 const STEPS = [
   {
@@ -26,9 +27,7 @@ export default function Landing() {
         Skip to content
       </a>
       <header className="topbar">
-        <Link href="/" className="brand">
-          FoodFlow
-        </Link>
+        <Brand />
         <span style={{ flex: 1 }} />
         <Link href="/login" className="btn btn-ghost">
           Sign in

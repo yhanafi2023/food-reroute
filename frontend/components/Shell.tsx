@@ -14,11 +14,10 @@ const WORKSPACE_NAME: Record<Workspace, string> = {
   coordinator: "Coordinator",
 };
 
-type Theme = "light" | "dark" | "system";
+type Theme = "light" | "dark";
 
 function readTheme(): Theme {
-  const t = document.documentElement.dataset.theme;
-  return t === "light" || t === "dark" ? t : "system";
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 function subscribeTheme(onChange: () => void) {
@@ -27,23 +26,38 @@ function subscribeTheme(onChange: () => void) {
   return () => obs.disconnect();
 }
 
+// Dark console is the default (238b63d); light is the viewer's choice and is remembered.
 function ThemeToggle() {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "system" as Theme);
-  const next = theme === "system" ? "dark" : theme === "dark" ? "light" : "system";
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "dark" as Theme);
+  const next: Theme = theme === "dark" ? "light" : "dark";
   const apply = () => {
-    if (next === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = next;
+    if (next === "light") document.documentElement.dataset.theme = "light";
+    else delete document.documentElement.dataset.theme;
     try {
-      if (next === "system") localStorage.removeItem("foodflow_theme");
-      else localStorage.setItem("foodflow_theme", next);
+      if (next === "light") localStorage.setItem("foodflow_theme", "light");
+      else localStorage.removeItem("foodflow_theme");
     } catch {
       // storage blocked: the choice lasts for this page only
     }
   };
   return (
-    <button type="button" className="btn btn-ghost" onClick={apply} aria-label={`Theme: ${theme}. Switch to ${next}`}>
-      Theme: {theme}
+    <button type="button" className="btn btn-ghost" onClick={apply} aria-label={`Switch to ${next} theme`}>
+      {next === "light" ? "Light theme" : "Dark theme"}
     </button>
+  );
+}
+
+// Logo mark from 238b63d: restaurant (amber) to organization (mint) along a live route (cyan/blue).
+export function Brand() {
+  return (
+    <Link href="/" className="brand" aria-label="FoodFlow home">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+        <circle cx="6" cy="21" r="4" fill="var(--m-restaurant)" />
+        <circle cx="22" cy="7" r="4" fill="var(--m-org)" />
+        <path d="M6 21 C 6 12, 22 16, 22 7" stroke="var(--cyan)" strokeWidth="3" fill="none" strokeLinecap="round" />
+      </svg>
+      FoodFlow
+    </Link>
   );
 }
 
@@ -131,23 +145,21 @@ export function Shell({ workspace, children }: { workspace?: Workspace; children
         Skip to content
       </a>
       <header className="topbar">
-        <Link href="/" className="brand">
-          FoodFlow
-        </Link>
+        <Brand />
         {workspace ? <span className="chip">{WORKSPACE_NAME[workspace]}</span> : null}
         <span style={{ flex: 1 }} />
-        {user ? <span className="small muted">Signed in as {user.name}</span> : null}
+        {user ? <span className="small muted hide-sm">Signed in as {user.name}</span> : null}
         <ThemeToggle />
         {user ? (
           <button
             type="button"
-            className="btn btn-ghost"
+            className="btn btn-primary"
             onClick={() => {
               logout();
               router.push("/demo");
             }}
           >
-            Switch role
+            Sign out
           </button>
         ) : null}
       </header>

@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import RescueMap from "@/components/RescueMap";
 import { CarrierLine } from "@/components/RescueCard";
 import { Shell } from "@/components/Shell";
 import { Empty, ErrorNote, Loading } from "@/components/States";
@@ -8,7 +9,7 @@ import { useWorkspace } from "@/lib/auth";
 import { relative, statusLabel, time } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { useServerNow } from "@/lib/useServerNow";
-import type { Stop, Trip, VolunteerTrips } from "@/lib/types";
+import type { Rescue, Stop, Trip, VolunteerTrips } from "@/lib/types";
 
 // One key per intended action and body: a retried tap on bad signal replays instead of applying twice,
 // while a corrected code is a new request (the server rejects a reused key with a different body).
@@ -152,6 +153,21 @@ function StopBlock({ stop, trip, onChanged, keys }: { stop: Stop; trip: Trip; on
   );
 }
 
+// The trip's pickup and drop offs on the map (GET /rescues/{id} is allowed for the volunteer on this trip).
+function TripMap({ trip }: { trip: Trip }) {
+  const [rescue, setRescue] = useState<Rescue | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    api<Rescue>(`/rescues/${trip.rescue_id}`)
+      .then((r) => !stopped && setRescue(r))
+      .catch(() => {});
+    return () => {
+      stopped = true;
+    };
+  }, [trip.rescue_id, trip.status]);
+  return rescue ? <RescueMap rescues={[rescue]} height={240} /> : null;
+}
+
 function TripCard({ trip, now, onChanged }: { trip: Trip; now: string | null; onChanged: () => void }) {
   const keys = useActionKey();
   const [error, setError] = useState("");
@@ -183,6 +199,7 @@ function TripCard({ trip, now, onChanged }: { trip: Trip; now: string | null; on
         {restaurantStopLabel} ({relative(trip.eta_pickup, now)})
       </p>
       <p className="small muted">{trip.mode_reason}</p>
+      <TripMap trip={trip} />
       {error ? <ErrorNote message={error} /> : null}
       {trip.status === "matched" ? (
         <div className="row">
