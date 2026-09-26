@@ -24,7 +24,7 @@ def _wrap(lines: List[str]) -> List[str]:
     return out
 
 
-def render(title: str, lines: List[str]) -> bytes:
+def render(title: str, lines: List[str], footer: str = "") -> bytes:
     body = _wrap(lines)
     pages = [body[i:i + LINES_PER_PAGE] for i in range(0, max(len(body), 1), LINES_PER_PAGE)] or [[]]
     objects: List[bytes] = []
@@ -33,7 +33,7 @@ def render(title: str, lines: List[str]) -> bytes:
     for n, page in enumerate(pages):
         text = ["BT", "/F1 14 Tf", "50 760 Td", f"({_esc(title)}) Tj", "/F1 9 Tf", "0 -22 Td", "11 TL"]
         text += [f"({_esc(l)}) '" for l in page]
-        text += ["0 -16 Td", f"(Page {n + 1} of {len(pages)}) Tj", "ET"]
+        text += ["ET", "BT", "/F1 8 Tf", "50 30 Td", f"({_esc((footer + '   ') if footer else '')}Page {n + 1} of {len(pages)}) Tj", "ET"]
         stream = "\n".join(text).encode("latin-1", "replace")
         content_id = 4 + 2 * n
         page_id = content_id + 1

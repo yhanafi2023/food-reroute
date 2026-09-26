@@ -1,0 +1,4 @@
+{
+  "_comment": "Some states offer additional food donation tax credits, often limited to farmers or specific donors. Every entry must include a source_url to the state's own law or tax agency page and verified=true after a human checked it; unverified or unsourced entries are never shown. Empty on purpose.",
+  "incentives": []
+}

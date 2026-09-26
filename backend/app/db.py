@@ -40,6 +40,8 @@ APPEND_ONLY_SQLITE = [
     "BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END",
     "CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_events "
     "BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END",
+    "CREATE TRIGGER IF NOT EXISTS ack_pdf_immutable BEFORE UPDATE OF signed_pdf_b64, pdf_sha256 ON acknowledgments "
+    "WHEN OLD.pdf_sha256 IS NOT NULL BEGIN SELECT RAISE(ABORT, 'a signed acknowledgment cannot change'); END",
 ]
 APPEND_ONLY_POSTGRES = [
     "CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger AS $$ "
@@ -47,6 +49,11 @@ APPEND_ONLY_POSTGRES = [
     "DROP TRIGGER IF EXISTS audit_no_change ON audit_events",
     "CREATE TRIGGER audit_no_change BEFORE UPDATE OR DELETE ON audit_events "
     "FOR EACH ROW EXECUTE FUNCTION audit_append_only()",
+    "CREATE OR REPLACE FUNCTION ack_immutable() RETURNS trigger AS $$ BEGIN IF OLD.pdf_sha256 IS NOT NULL AND "
+    "(NEW.pdf_sha256 IS DISTINCT FROM OLD.pdf_sha256 OR NEW.signed_pdf_b64 IS DISTINCT FROM OLD.signed_pdf_b64) THEN "
+    "RAISE EXCEPTION 'a signed acknowledgment cannot change'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql",
+    "DROP TRIGGER IF EXISTS ack_pdf_immutable ON acknowledgments",
+    "CREATE TRIGGER ack_pdf_immutable BEFORE UPDATE ON acknowledgments FOR EACH ROW EXECUTE FUNCTION ack_immutable()",
 ]
 
 
@@ -67,6 +74,7 @@ def drop_schema(eng: Engine = engine) -> None:
         if eng.dialect.name == "sqlite":
             conn.execute(text("DROP TRIGGER IF EXISTS audit_no_update"))
             conn.execute(text("DROP TRIGGER IF EXISTS audit_no_delete"))
+            conn.execute(text("DROP TRIGGER IF EXISTS ack_pdf_immutable"))
             conn.execute(text("PRAGMA foreign_keys=OFF"))
         else:
             conn.execute(text("DROP TRIGGER IF EXISTS audit_no_change ON audit_events"))

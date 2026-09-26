@@ -89,7 +89,8 @@ def signin_code(client, email):
 
 def test_role_boundaries_on_admin_and_profiles(client):
     for role in ("restaurant_staff", "volunteer", "org_staff", "org_manager", "restaurant_manager"):
-        assert client.post("/admin/orgs/1/verify-ein", json={"verified": True}, headers=signin(client, EMAILS[role])).status_code == 403
+        assert client.post("/admin/orgs/1/verify-qualified-donee", json={"confirm": True, "method": "eo_bmf"},
+                           headers=signin(client, EMAILS[role])).status_code == 403
     assert client.get("/volunteers/me/profile", headers=signin(client, EMAILS["restaurant_staff"])).status_code == 403
     assert client.put("/restaurants/me/profile", json={}, headers=signin(client, EMAILS["restaurant_staff"])).status_code in (403, 422)
     assert client.get("/auth/me").status_code == 401

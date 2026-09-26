@@ -27,8 +27,11 @@ def _user(db: Session, org_name: str) -> User:
     return db.query(User).filter_by(organization_id=org.id).order_by(User.id).first()
 
 
-def _post(db: Session, org_name: str, **kw) -> Rescue:
+def _post(db: Session, org_name: str, menu: str = "", **kw) -> Rescue:
     u = _user(db, org_name)
+    if menu:
+        from app.models import MenuItem
+        kw["menu_item_id"] = db.query(MenuItem).filter_by(organization_id=u.organization_id, name=menu).one().id
     body = posting.QuickPost(attested=True, pickup_deadline=clock.now() + timedelta(minutes=kw.pop("deadline_min", 90)), **kw)
     rescue = posting.create_post(db, u, body)["rescue"]
     dispatch.run_matching(db, rescue, u)
@@ -54,8 +57,8 @@ def _receive(db: Session, fc, trip: Trip, s, receipts) -> None:
     if trip.mode != "volunteer" and s.status in ("received", "rejected"):
         handoff._set(db, trip, "received", staff)
     if s.status == "received":
-        from app import benefits
-        benefits.create_acknowledgment(db, s)
+        from app.tax import acks
+        acks.on_receipt(db, s)
 
 
 def complete(db: Session, fc, trip: Trip, receipts=None) -> None:
@@ -95,14 +98,14 @@ def run_all(db: Session, ids: Dict[str, int]) -> None:
     fc = clock.FakeClock(clock.local_to_utc(midnight + timedelta(hours=18)))
     with clock.use(fc):
         # 1. completed rescue, full audit trail (24 meals to the shelter)
-        r1 = _post(db, "Casa Demo Cocina", quantity=2, unit="tray", category="hot",
+        r1 = _post(db, "Casa Demo Cocina", "Rice and black beans", quantity=2, unit="tray", category="hot",
                    description="Rice, black beans, roast chicken", allergens=[])
         for t in _trips(db, r1, "matched"):
             complete(db, fc, t)
 
         # 2. the first volunteer never arrives; after the grace period the rescue re-queues
         fc.advance(minutes=20)
-        r2 = _post(db, "Demo Pizza Sur", quantity=2, unit="box", category="shelf_stable",
+        r2 = _post(db, "Demo Pizza Sur", "Garlic knots", quantity=2, unit="box", category="shelf_stable",
                    description="Boxed garlic knots", allergens=["gluten", "dairy"])
         first = _trips(db, r2, "matched")[0]
         fc.current = first.eta_pickup_at
@@ -112,20 +115,20 @@ def run_all(db: Session, ids: Dict[str, int]) -> None:
 
         # 3. partial acceptance at the shelter
         fc.advance(minutes=15)
-        r3 = _post(db, "Demo Buffet Oeste", quantity=2, unit="half_pan", category="hot", description="Buffet trays",
+        r3 = _post(db, "Demo Buffet Oeste", "Buffet hot trays", quantity=2, unit="half_pan", category="hot", description="Buffet trays",
                    allergens=["shellfish"])
         for t in _trips(db, r3, "matched"):
             complete(db, fc, t, {"Demo Night Shelter": ("partially_accepted", 12, "packaging", "two pans arrived uncovered")})
 
         # 4. late-night simulated AV delivery (11:40 PM, cold food to the 24/7 fridge)
         fc.current = clock.local_to_utc(midnight + timedelta(hours=23, minutes=40))
-        r4 = _post(db, "Demo Grill Norte", quantity=3, unit="bag", category="cold", description="Salads and wraps", allergens=[])
+        r4 = _post(db, "Demo Grill Norte", "Salads and wraps", quantity=3, unit="bag", category="cold", description="Salads and wraps", allergens=[])
         for t in _trips(db, r4, "matched") + _trips(db, r4, "en_route_pickup"):
             complete(db, fc, t)
 
         # 5. the simulated AV's load window is missed; a volunteer who just came online takes over
         fc.advance(minutes=10)
-        r5 = _post(db, "Demo Grill Norte", quantity=2, unit="bag", category="cold", description="Sandwich trays", allergens=[])
+        r5 = _post(db, "Demo Grill Norte", "Sandwich trays", quantity=2, unit="bag", category="cold", description="Sandwich trays", allergens=[])
         av5 = next(t for t in _trips(db, r5, "en_route_pickup") if t.mode == "waymo_sim")
         sam = db.query(User).filter_by(first_name="Sam", role="volunteer").one()
         vp = db.get(VolunteerProfile, sam.id)

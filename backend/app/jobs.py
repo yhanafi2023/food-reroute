@@ -160,6 +160,9 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
             if dispatch.run_matching(db, rescue).get("matched"):
                 counts["rematched"] += 1
 
+    from app.tax import acks
+    counts["acknowledgments"] = acks.monthly_due(db)
+    counts["ack_reminders"] = acks.send_reminders(db)
     if reports:
         from app import reports as report_builder
         counts["reports"] = report_builder.generate_due_reports(db)

@@ -9,10 +9,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app import audit, benefits, clock, pdf, reports
+from app import audit, benefits, clock, reports
 from app.auth import ORG_ANY, ORG_MANAGER, RESTAURANT_ANY, RESTAURANT_MANAGER, VOLUNTEER, get_current_user
 from app.db import get_db
-from app.models import Acknowledgment, Organization, OrgReport, RecoveryAgreement, User
+from app.models import Organization, OrgReport, RecoveryAgreement, User
 
 router = APIRouter(tags=["records"])
 
@@ -31,81 +31,6 @@ def _restaurant_id(user: User, restaurant_id: Optional[int]) -> int:
             raise HTTPException(422, "Give restaurant_id")
         return restaurant_id
     return user.organization_id
-
-
-# ---------- 9a tax documentation ----------
-
-@router.get("/reports/donor-tax-summary")
-def donor_tax_summary(year: int = Query(ge=2015, le=2100), format: Literal["json", "csv", "pdf"] = "json",
-                      restaurant_id: Optional[int] = None, user: User = Depends(get_current_user),
-                      db: Session = Depends(get_db)):
-    if user.role not in ("restaurant_manager", "admin"):
-        raise HTTPException(403, "Tax summaries are for restaurant managers")
-    s = benefits.tax_summary(db, _restaurant_id(user, restaurant_id), year)
-    if format == "json":
-        return s
-    cols = ["date", "receiving_org", "ein", "org_verified_501c3", "meals", "lbs_est", "fmv", "basis", "basis_method",
-            "estimated_deduction", "counts_toward_estimate", "note", "acknowledgment"]
-    if format == "csv":
-        body = _csv([[l[c] for c in cols] for l in s["lines"]] +
-                    [[], ["estimated_total_deduction", s["estimated_total_deduction"]], [s["limits_note"]], [s["disclaimer"]]], cols)
-        return Response(body, media_type="text/csv",
-                        headers={"Content-Disposition": f'attachment; filename="donor-tax-summary-{year}.csv"'})
-    lines = [s["disclaimer"], "", f"Formula: {s['formula']}", ""] + [
-        f"{l['date']}  {l['receiving_org']}  {l['meals']} meals  FMV {l['fmv']}  basis {l['basis']}  "
-        f"estimate {l['estimated_deduction']}  {'' if l['counts_toward_estimate'] else '(not counted: ' + l['note'] + ')'}"
-        for l in s["lines"]] + ["", f"Estimated total: {s['estimated_total_deduction']}", s["limits_note"], "", s["disclaimer"]]
-    return Response(pdf.render(f"Donor tax summary {year} (estimate)", lines), media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="donor-tax-summary-{year}.pdf"'})
-
-
-# ---------- acknowledgments ----------
-
-def ack_json(a: Acknowledgment) -> dict:
-    return {"id": a.id, "stop_id": a.stop_id, "status": a.status, "signer_name": a.signer_name,
-            "signed_at": a.signed_at.isoformat() + "Z" if a.signed_at else None, "content": a.content}
-
-
-@router.get("/acknowledgments")
-def list_acks(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    q = db.query(Acknowledgment)
-    if user.role in ("org_staff", "org_manager"):
-        q = q.filter_by(receiver_org_id=user.organization_id)
-    elif user.role in ("restaurant_staff", "restaurant_manager"):
-        q = q.filter_by(donor_org_id=user.organization_id)
-    elif user.role != "admin":
-        raise HTTPException(403, "Acknowledgments are for donors and receiving organizations")
-    return [ack_json(a) for a in q.order_by(Acknowledgment.id.desc()).limit(200)]
-
-
-def _ack(db: Session, ack_id: int, user: User) -> Acknowledgment:
-    a = db.get(Acknowledgment, ack_id)
-    if a is None or (user.role != "admin" and user.organization_id not in (a.donor_org_id, a.receiver_org_id)):
-        raise HTTPException(404, "Acknowledgment not found")
-    return a
-
-
-@router.get("/acknowledgments/{ack_id}")
-def get_ack(ack_id: int, format: Literal["json", "pdf"] = "json", user: User = Depends(get_current_user),
-            db: Session = Depends(get_db)):
-    a = _ack(db, ack_id, user)
-    if format == "json":
-        return ack_json(a)
-    return Response(pdf.render("Acknowledgment of food donation (template)", benefits.acknowledgment_lines(a)),
-                    media_type="application/pdf")
-
-
-@router.post("/acknowledgments/{ack_id}/sign")
-def sign_ack(ack_id: int, signer_name: str = Body(..., embed=True, min_length=2, max_length=120),
-             user: User = Depends(ORG_MANAGER), db: Session = Depends(get_db)):
-    a = _ack(db, ack_id, user)
-    if a.receiver_org_id != user.organization_id:
-        raise HTTPException(403, "Only the receiving organization signs its acknowledgment")
-    if a.status == "signed":
-        raise HTTPException(409, "Already signed")
-    benefits.sign_acknowledgment(db, a, user, signer_name)
-    db.commit()
-    return ack_json(a)
 
 
 # ---------- 9b compliance records ----------
@@ -148,15 +73,6 @@ def sb1383(month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), format: Liter
 
 # ---------- 9c restaurant dashboard, totes, public page ----------
 
-@router.get("/restaurants/me/benefits")
-def my_benefits(year: Optional[int] = None, user: User = Depends(RESTAURANT_ANY), db: Session = Depends(get_db)):
-    year = year or clock.to_local(clock.now()).year
-    d = benefits.restaurant_dashboard(db, user.organization_id, year)
-    if user.role != "restaurant_manager":
-        d.pop("estimated_deduction")  # tax figures are for managers
-    return d
-
-
 @router.post("/restaurants/me/totes/returned")
 def totes_returned(count: int = Body(..., embed=True, ge=1, le=500), user: User = Depends(RESTAURANT_ANY),
                    db: Session = Depends(get_db)):
@@ -175,7 +91,8 @@ def public_partner(slug: str, db: Session = Depends(get_db)):
     org = db.query(Organization).filter_by(public_slug=slug).one_or_none()
     if org is None or not (org.restaurant_profile and org.restaurant_profile.public_partner_page):
         raise HTTPException(404, "Partner page not found")
-    d = benefits.restaurant_dashboard(db, org.id, clock.to_local(clock.now()).year)
+    from app.tax.service import dashboard
+    d = dashboard(db, org.id, clock.to_local(clock.now()).year)
     return {"name": org.name, "badge": "Food Rescue Partner", "year": d["year"], "meals_donated": d["meals_donated"],
             "pounds_diverted": d["pounds_diverted"], "pounds_method": d["pounds_method"], "is_fictional": org.is_fictional}
 

@@ -18,6 +18,7 @@ running the real services under a fake clock: see app/demo_scenarios.py.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Dict
 
 from sqlalchemy import inspect
@@ -25,19 +26,40 @@ from sqlalchemy.orm import Session
 
 from app import clock, intake
 from app.db import Base, SessionLocal, create_schema, drop_schema, engine
-from app.models import Organization, ReceiverProfile, RestaurantProfile, User, VolunteerProfile
+from app.models import MenuItem, Organization, ReceiverProfile, RestaurantProfile, RestaurantTaxProfile, User, VolunteerProfile
 
 DEMO_CODE = "246810"  # demo accounts only, DEMO_MODE only
 DAYS = intake.WEEKDAYS
 
-# name, lat, lng, staffed_until (every day), closing, totes, fmv/meal, basis/meal, election, surplus_usually
+# name, lat, lng, staffed_until (every day), closing, totes, surplus_usually
 RESTAURANTS = [
-    ("Casa Demo Cocina", 25.7630, -80.3690, "23:30", "22:00", 6, 9.0, 3.0, False, "after dinner service, 9:30 to 10 PM"),
-    ("Demo Bakery Uno", 25.7700, -80.3450, "21:00", "20:00", 2, 4.0, None, True, "at closing, 8 PM"),
-    ("Demo Grill Norte", 25.7930, -80.3500, "01:00", "00:00", 4, 11.0, 4.0, False, "late night, 11 PM to midnight"),
-    ("Demo Pizza Sur", 25.7350, -80.3600, "22:30", "22:00", 0, 3.5, 1.2, False, "at closing"),
-    ("Demo Buffet Oeste", 25.7580, -80.4000, "00:30", "23:00", 8, 7.0, 2.5, False, "after the 10 PM buffet close"),
+    ("Casa Demo Cocina", 25.7630, -80.3690, "23:30", "22:00", 6, "after dinner service, 9:30 to 10 PM"),
+    ("Demo Bakery Uno", 25.7700, -80.3450, "21:00", "20:00", 2, "at closing, 8 PM"),
+    ("Demo Grill Norte", 25.7930, -80.3500, "01:00", "00:00", 4, "late night, 11 PM to midnight"),
+    ("Demo Pizza Sur", 25.7350, -80.3600, "22:30", "22:00", 0, "at closing"),
+    ("Demo Buffet Oeste", 25.7580, -80.4000, "00:30", "23:00", 8, "after the 10 PM buffet close"),
 ]
+
+# FICTIONAL tax profiles, entered "by" the fictional restaurants:
+# entity_type, keeps_inventory, 25% election, tax_rate_pct (entered), estimated_taxable_income (entered)
+TAX_PROFILES = {
+    "Casa Demo Cocina": ("c_corp", True, False, 21.0, None),
+    "Demo Bakery Uno": ("sole_prop", False, True, None, None),
+    "Demo Grill Norte": ("s_corp", True, False, None, 20000.0),
+    "Demo Pizza Sur": ("partnership_llc", True, False, None, None),
+    "Demo Buffet Oeste": ("unknown", True, False, None, None),
+}
+# FICTIONAL menus: name, unit, price per unit, food cost %, actual cost per unit, meals per unit, category, allergens
+MENUS = {
+    "Casa Demo Cocina": [("Rice and black beans", "tray", 60.0, 30.0, None, 12, "hot", []),
+                         ("Roast chicken", "half_pan", 90.0, None, 30.0, 10, "hot", []),
+                         ("Chicken wraps", "box", 48.0, 35.0, None, 8, "cold", ["gluten"])],
+    "Demo Bakery Uno": [("Day's bread and pastries", "bag", 24.0, None, None, 4, "shelf_stable", ["gluten", "dairy", "eggs"])],
+    "Demo Grill Norte": [("Salads and wraps", "bag", 36.0, 32.0, None, 4, "cold", ["gluten"]),
+                         ("Sandwich trays", "bag", 30.0, None, 9.0, 4, "cold", ["gluten", "dairy"])],
+    "Demo Pizza Sur": [("Garlic knots", "box", 20.0, 25.0, None, 8, "shelf_stable", ["gluten", "dairy"])],
+    "Demo Buffet Oeste": [("Buffet hot trays", "half_pan", 55.0, 28.0, None, 10, "hot", ["shellfish"])],
+}
 
 EVERY_DAY = lambda windows: {d: windows for d in DAYS}  # noqa: E731
 
@@ -120,7 +142,7 @@ def seed_accounts(db: Session) -> Dict[str, int]:
     ids: Dict[str, int] = {}
     admin = _user(db, "admin@foodflow-demo.example.com", "Demo Admin", "admin")
     ids["admin"] = admin.id
-    for i, (name, lat, lng, staffed, closing, totes, fmv, basis, election, usually) in enumerate(RESTAURANTS):
+    for i, (name, lat, lng, staffed, closing, totes, usually) in enumerate(RESTAURANTS):
         org = Organization(kind="restaurant", name=name, legal_name=f"{name} LLC (fictional)",
                            address="Demo location near FIU (fictional business)", lat=lat, lng=lng, is_fictional=True,
                            created_at=clock.now())
@@ -128,9 +150,15 @@ def seed_accounts(db: Session) -> Dict[str, int]:
         db.flush()
         db.add(RestaurantProfile(organization_id=org.id, closing_times={d: closing for d in DAYS},
                                  staffed_until={d: staffed for d in DAYS}, surplus_usually=usually, totes_on_hand=totes,
-                                 default_fmv_per_meal=fmv, default_cost_basis_per_meal=basis, basis_election_25pct=election,
                                  pickup_instructions="Back door by the kitchen; ask for the closing cook (fictional)."))
         ids[name] = org.id
+        entity, keeps, election, rate, income = TAX_PROFILES[name]
+        db.add(RestaurantTaxProfile(organization_id=org.id, entity_type=entity, keeps_inventory=keeps,
+                                    use_25pct_basis_election=election, tax_rate_pct=rate, estimated_taxable_income=income,
+                                    tax_year_start=date(clock.to_local(clock.now()).year, 1, 1), updated_at=clock.now()))
+        for mname, unit, price, pct, cost, meals, cat, allergens in MENUS[name]:
+            db.add(MenuItem(organization_id=org.id, name=mname, unit=unit, menu_price_per_unit=price, food_cost_pct=pct,
+                            actual_cost_per_unit=cost, meals_per_unit=meals, category=cat, allergens=allergens))
         slug = name.lower().replace(" ", "-")
         if i == 0:
             ids["restaurant_staff"] = _user(db, "staff@casa-demo.example.com", "Rosa Demo", "restaurant_staff", org.id).id
@@ -156,6 +184,8 @@ def seed_accounts(db: Session) -> Dict[str, int]:
         if spec["verified"]:
             profile = db.get(ReceiverProfile, org.id)
             profile.ein_verified, profile.ein_verified_by, profile.ein_verified_at = True, admin.id, clock.now()
+            profile.not_private_nonoperating_foundation = True
+            profile.verification_source = "FICTIONAL demo verification: this made-up EIN has no IRS record"
         ids[name] = org.id
     for name, email, lat, lng, avail, cap, cooler, bags, max_mi, vehicle in VOLUNTEERS:
         u = _user(db, email, name, "volunteer", phone="305-555-0150")

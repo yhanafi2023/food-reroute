@@ -82,9 +82,11 @@ def test_ein_change_requires_reverification(client):
     mgr = signin(client, EMAILS["org_manager"])
     oid = client.get("/orgs/me/profile", headers=mgr).json()["organization"]["id"]
     client.put("/orgs/me/intake/Q3", json={**ORGS["Demo Night Shelter"]["q3"], "ein": "00-0000099"}, headers=mgr)
-    assert client.get("/orgs/me/profile", headers=mgr).json()["q3"]["ein_verified"] is False
+    assert client.get("/orgs/me/profile", headers=mgr).json()["q3"]["qualified_donee_verified"] is False
     admin = signin(client, EMAILS["admin"])
-    assert client.post(f"/admin/orgs/{oid}/verify-ein", json={"verified": True}, headers=admin).json()["ein_verified"] is True
+    r = client.post(f"/admin/orgs/{oid}/verify-qualified-donee", json={"confirm": True, "method": "teos_manual", "is_501c3": True,
+                    "not_private_nonoperating_foundation": True, "note": "test"}, headers=admin)
+    assert r.json()["verified"] is True
 
 
 def test_quick_need_update_and_phone_masking(client):

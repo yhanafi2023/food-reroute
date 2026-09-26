@@ -36,10 +36,21 @@ class QuickPost(BaseModel):
     dietary_tags: List[Literal[DIETARY_TAGS]] = []  # type: ignore[valid-type]
     pickup_instructions: Optional[str] = Field(default=None, max_length=1000)
     safe_until: Optional[datetime] = None
-    fmv_per_meal: Optional[float] = Field(default=None, ge=0, le=500)
-    cost_basis_per_meal: Optional[float] = Field(default=None, ge=0, le=500)
+    menu_item_id: Optional[int] = Field(default=None, description="Pick a menu item to fill in value and cost")
+    items: Optional[List["ItemIn"]] = Field(default=None, description="Several items in one post (optional)")
 
     _utc = field_validator("pickup_deadline", "prepared_at", "safe_until")(lambda v: to_naive_utc(v) if v else v)
+
+
+class ItemIn(BaseModel):
+    menu_item_id: Optional[int] = None
+    description: str = Field(default="", max_length=300)
+    quantity: float = Field(gt=0, le=1000)
+    unit: Literal["individual_meal", "meal", "bag", "box", "tray", "half_pan", "full_pan", "lb"] = "individual_meal"
+    weight_lbs: Optional[float] = Field(default=None, ge=0, le=10000)
+
+
+QuickPost.model_rebuild()
 
 
 class PostEdit(BaseModel):
@@ -60,8 +71,7 @@ def est_meals(quantity: float, unit: str) -> int:
 
 def _defaults(user: User) -> Dict[str, Any]:
     prof = user.organization.restaurant_profile
-    return {"pickup_instructions": prof.pickup_instructions if prof else "",
-            "fmv": prof.default_fmv_per_meal if prof else None, "basis": prof.default_cost_basis_per_meal if prof else None}
+    return {"pickup_instructions": prof.pickup_instructions if prof else ""}
 
 
 def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, schedule_id: Optional[int] = None) -> Dict[str, Any]:
@@ -84,8 +94,6 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
         attested_by=None if draft else user.id, attested_at=None if draft else now, safe_until=safe_until,
         pickup_deadline=deadline, pickup_instructions=body.pickup_instructions if body.pickup_instructions is not None else d["pickup_instructions"],
         pickup_code=lifecycle.code(), is_draft=draft, schedule_id=schedule_id,
-        fmv_per_meal=body.fmv_per_meal if body.fmv_per_meal is not None else d["fmv"],
-        cost_basis_per_meal=body.cost_basis_per_meal if body.cost_basis_per_meal is not None else d["basis"],
         is_fictional=user.organization.is_fictional, created_at=now, updated_at=now,
     )
     warnings = []
@@ -98,6 +106,14 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
         warnings.append(f"Pickup deadline moved to the food's safe-until time, {clock.fmt_local(deadline)}")
     db.add(rescue)
     db.flush()
+    from app.tax.service import create_items
+    specs = ([i.model_dump() for i in body.items] if body.items else
+             [{"menu_item_id": body.menu_item_id, "quantity": body.quantity, "unit": body.unit, "description": body.description}])
+    items = create_items(db, rescue, specs)
+    rescue.est_meals = max(int(round(sum(i.estimated_meals for i in items))), 1)
+    rescue.meals_per_unit = round(rescue.est_meals / rescue.quantity, 4)
+    if any(i.needs_valuation for i in items):
+        warnings.append("Some items have no value or cost yet; they are recorded but left out of tax estimates until valued")
     audit.log(db, "rescue_drafted" if draft else "rescue_posted", entity="rescue", actor=user, rescue_id=rescue.id,
               to_state="posted", details={"quantity": body.quantity, "unit": body.unit, "est_meals": rescue.est_meals,
                                           "meals_per_unit_assumption": rescue.meals_per_unit, "category": body.category,
@@ -119,14 +135,19 @@ def find_duplicate(db: Session, org_id: int, body: QuickPost) -> Optional[Rescue
 
 
 def body_from_rescue(r: Rescue, deadline: datetime, attested: bool) -> QuickPost:
+    from app.models import DonationItem
+    from sqlalchemy.orm import object_session
+    items = object_session(r).query(DonationItem).filter_by(rescue_id=r.id).order_by(DonationItem.id).all()
     return QuickPost(quantity=r.quantity, unit=r.unit, category=r.category, pickup_deadline=deadline, attested=attested,
                      description=r.description, allergens=r.allergens if r.allergens_declared else None,
-                     dietary_tags=r.dietary_tags, pickup_instructions=r.pickup_instructions)
+                     dietary_tags=r.dietary_tags, pickup_instructions=r.pickup_instructions,
+                     items=[ItemIn(menu_item_id=i.menu_item_id, description=i.description, quantity=i.quantity,
+                                   unit=i.unit, weight_lbs=i.weight_lbs) for i in items] or None)
 
 
 def template_fields(body: QuickPost) -> Dict[str, Any]:
     return {k: v for k, v in body.model_dump(mode="json").items()
-            if k not in ("pickup_deadline", "attested", "prepared_at", "safe_until")}
+            if k not in ("pickup_deadline", "attested", "prepared_at", "safe_until") and v is not None}
 
 
 def body_from_template(t: RescueTemplate, deadline: datetime, attested: bool) -> QuickPost:

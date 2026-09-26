@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app import clock, pdf
 from app.assumptions import LBS_PER_MEAL
-from app.models import Acknowledgment, OrgReport, ReceiverProfile, Trip, TripStop
+from app.models import OrgReport, ReceiverProfile, Trip, TripStop
+from app.tax import acks
 
 FIELD_LABELS = {
     "date_time": "Date/time received", "donor_name": "Donor", "donor_address": "Donor address",
@@ -52,7 +53,7 @@ def delivery_rows(db: Session, org_id: int, start: date, end: date, fields: List
                      TripStop.received_at >= lo, TripStop.received_at < hi).order_by(TripStop.received_at).all())
     rows = []
     for s in stops:
-        ack = db.query(Acknowledgment).filter_by(stop_id=s.id).one_or_none()
+        ack = acks.for_stop(db, s)
         row = {f: _value(s, f, ack) for f in fields}
         missing = [f for f in fields if row[f] in (None, "") and f != "donor_acknowledgment"]
         if missing != (s.incomplete_fields or []):

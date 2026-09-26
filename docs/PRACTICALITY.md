@@ -48,7 +48,7 @@ instead of applying twice.
 | 3 | see incoming and to-confirm deliveries | `GET /orgs/me/deliveries` | 200 |
 | 4 | confirm receipt (condition, temperature, name) | `POST /stops/{id}/receipt` | 200 |
 | 5 | open the donor acknowledgment | `GET /acknowledgments` | 200 |
-| 6 | e-sign it | `POST /acknowledgments/{id}/sign` | 200 |
+| 6 | e-sign it (typed name and title) | `POST /acknowledgments/{id}/sign` | 200 |
 | 7 | build this month's report | `POST /orgs/me/reports` | 200 |
 | 8 | download the CSV | `GET /orgs/me/reports/{id}/download` | 200 |
 

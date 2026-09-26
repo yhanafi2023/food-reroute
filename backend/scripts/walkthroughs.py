@@ -89,7 +89,8 @@ def main():
         rec("post", f"/stops/{sid}/receipt", "org: confirm receipt (condition, temperature, name)",
             json={"condition": "accepted", "temperature_f": 150, "received_by_name": "Grace"}, headers=o)
         ack = rec("get", "/acknowledgments", "org: open the donor acknowledgment", headers=o).json()[0]
-        rec("post", f"/acknowledgments/{ack['id']}/sign", "org: e-sign it", json={"signer_name": "Grace Demo"}, headers=o)
+        rec("post", f"/acknowledgments/{ack['id']}/sign", "org: e-sign it (typed name and title)",
+            json={"signer_name": "Grace Demo", "signer_title": "Shelter manager"}, headers=o)
         rep = rec("post", "/orgs/me/reports?start=2026-09-01&end=2026-09-30&format=csv", "org: build this month's report", headers=o).json()
         rec("get", f"/orgs/me/reports/{rep['id']}/download", "org: download the CSV", headers=o)
         out["org"] = list(rec.calls)

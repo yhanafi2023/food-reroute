@@ -92,6 +92,12 @@ def rescue_json(r: Rescue, viewer: User, only_org: Optional[int] = None) -> Dict
     if own:
         d["pickup_code"] = r.pickup_code
         d["cancel_reason"] = r.cancel_reason
-        d["fmv_per_meal"] = r.fmv_per_meal
-        d["cost_basis_per_meal"] = r.cost_basis_per_meal
+        from sqlalchemy.orm import object_session
+        from app.models import DonationItem
+        d["items"] = [{"id": i.id, "menu_item_id": i.menu_item_id, "description": i.description, "quantity": i.quantity,
+                       "unit": i.unit, "estimated_meals": i.estimated_meals, "accepted_quantity": i.accepted_quantity,
+                       "needs_valuation": i.needs_valuation,
+                       **({"fmv_per_unit": i.fmv_per_unit, "fmv_method": i.fmv_method, "basis_per_unit": i.basis_per_unit,
+                           "basis_method": i.basis_method} if viewer.role in ("restaurant_manager", "admin") else {})}
+                      for i in object_session(r).query(DonationItem).filter_by(rescue_id=r.id).order_by(DonationItem.id)]
     return d

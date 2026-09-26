@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
 
 from app import audit, clock, intake
-from app.auth import ADMIN, ORG_ANY, RESTAURANT_MANAGER, VOLUNTEER, get_current_user, mask_phone
+from app.auth import ORG_ANY, RESTAURANT_MANAGER, VOLUNTEER, get_current_user, mask_phone
 from app.db import get_db
 from app.models import Organization, ReceiverProfile, ReceivingException, RestaurantProfile, User, VolunteerProfile
 
@@ -37,7 +37,8 @@ def profile_json(db: Session, org: Organization, viewer: User) -> Dict:
                                            "max_meals_per_delivery", "typical_nightly_need", "current_need")},
         "q3": {"required_fields": p.required_fields, "report_frequency": p.report_frequency,
                "report_format": p.report_format, "reports_to": p.reports_to, "is_501c3": p.is_501c3,
-               "ein": p.ein if own else None, "ein_verified": p.ein_verified},
+               "ein": p.ein if own else None, "acknowledgment_frequency": p.ack_frequency,
+               "qualified_donee_verified": p.ein_verified, "verification_source": p.verification_source},
         "completeness": intake.completeness(db, org.id),
     }
 
@@ -94,18 +95,6 @@ def update_need(body: NeedIn, user: User = Depends(ORG_ANY), db: Session = Depen
     return {"current_need": p.current_need, "updated_at": p.current_need_at.isoformat() + "Z"}
 
 
-@router.post("/admin/orgs/{org_id}/verify-ein")
-def verify_ein(org_id: int, verified: bool = Body(True, embed=True), user: User = Depends(ADMIN), db: Session = Depends(get_db)):
-    p = db.get(ReceiverProfile, org_id)
-    if p is None or not p.is_501c3 or not p.ein:
-        raise HTTPException(404, "No 501(c)(3) EIN on file for this organization")
-    p.ein_verified, p.ein_verified_by, p.ein_verified_at = verified, user.id, clock.now()
-    audit.log(db, "ein_verified" if verified else "ein_unverified", entity="organization", actor=user,
-              details={"organization_id": org_id})
-    db.commit()
-    return {"organization_id": org_id, "ein_verified": p.ein_verified}
-
-
 # ---------- 2b restaurants ----------
 
 
@@ -115,9 +104,6 @@ class RestaurantProfileIn(BaseModel):
     staffed_until: Dict[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"], str]
     surplus_usually: str = Field(default="", max_length=200)
     totes_on_hand: int = Field(ge=0, le=500)
-    default_fmv_per_meal: Optional[float] = Field(default=None, ge=0, le=500)
-    default_cost_basis_per_meal: Optional[float] = Field(default=None, ge=0, le=500)
-    basis_election_25pct: bool = False
     pickup_instructions: str = Field(default="", max_length=1000)
     hauling_cost_per_lb: Optional[float] = Field(default=None, ge=0, le=100)
     public_partner_page: bool = False
@@ -135,7 +121,6 @@ def restaurant_profile_json(org: Organization) -> Dict:
     p = org.restaurant_profile
     return {"organization": {"id": org.id, "name": org.name, "address": org.address, "is_fictional": org.is_fictional},
             **{k: getattr(p, k) for k in ("closing_times", "staffed_until", "surplus_usually", "totes_on_hand", "totes_out",
-                                           "default_fmv_per_meal", "default_cost_basis_per_meal", "basis_election_25pct",
                                            "pickup_instructions", "hauling_cost_per_lb", "public_partner_page")},
             "public_slug": org.public_slug}
 

@@ -22,6 +22,7 @@ UNIT_TO_MEALS: Dict[str, float] = {
     "tray": 12,
     "half_pan": 10,
     "full_pan": 20,
+    "lb": round(1 / 1.2, 4),  # cited: Feeding America, 1.2 lbs per meal
 }
 
 # Hours after preparation that food is treated as safe to deliver (safe_until default).
