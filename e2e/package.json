@@ -1,0 +1,11 @@
+{
+  "name": "foodflow-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:3x": "playwright test --repeat-each=3 --workers=1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
