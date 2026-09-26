@@ -30,7 +30,7 @@ def _users(db: Session, org_id: int) -> List[User]:
     return db.query(User).filter_by(organization_id=org_id, active=True).all()
 
 
-def run_jobs(db: Session) -> Dict[str, int]:
+def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
     now = clock.now()
     counts = {k: 0 for k in ("vehicle_moves", "av_load_missed", "av_unload_missed", "no_shows", "expired", "warnings",
                              "reroutes", "drafts", "reminders", "rematched", "reports")}
@@ -160,8 +160,9 @@ def run_jobs(db: Session) -> Dict[str, int]:
             if dispatch.run_matching(db, rescue).get("matched"):
                 counts["rematched"] += 1
 
-    from app import reports
-    counts["reports"] = reports.generate_due_reports(db)
+    if reports:
+        from app import reports as report_builder
+        counts["reports"] = report_builder.generate_due_reports(db)
     db.commit()
     return counts
 
