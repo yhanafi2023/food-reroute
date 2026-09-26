@@ -13,8 +13,12 @@ Score (lower is better):
   demand_fit     = meals placed on real need / meals available
   priority_bonus = meal weighted average of HIGH 1, MEDIUM 0.5, LOW 0
 
-Matching uses the offline road estimate for every option so scoring is fast and
-deterministic. The real road route is fetched once, when the driver accepts.
+Distances use the offline road estimate (straight line x 1.3). Times come from the
+ETA model (intelligence.eta: gradient boosting trained on real OSRM road-network
+times for Miami-Dade, P50 with a calibrated P10 to P90 range, plus an assumed 6
+minutes of handling per stop), batched into one prediction call per match. If the
+model is unavailable it falls back to the old rule (22 mph + 6 minutes per stop). The real road route
+is fetched once, when the driver accepts.
 """
 from __future__ import annotations
 
@@ -23,12 +27,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from app.intelligence.allocation import allocate, demand_fit, remaining_meals
-from app.logistics.geo import drive_minutes, haversine_miles, offline_eta_minutes, road_miles
+from app.intelligence.eta.model import predict_legs, sum_legs
+from app.logistics.geo import haversine_miles, road_miles
 
 TOP_K = 5
 URGENCY_HORIZON_MINUTES = 180.0
 PRIORITY_BONUS = {"HIGH": 1.0, "MEDIUM": 0.5, "LOW": 0.0}
-HANDLING = 6.0
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -94,10 +98,11 @@ def _stops_summary(stops: Sequence[Dict[str, Any]]) -> str:
     return ", then ".join(f"{s['meals']} meals to {s['name']}" for s in stops)
 
 
-def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float]) -> Optional[Dict[str, Any]]:
+def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float], pickup_eta, plan_eta) -> Optional[Dict[str, Any]]:
+    """Score one driver x plan. pickup_eta / plan_eta are {p10, p50, p90, source} minutes from the ETA model."""
     r = (rescue["lat"], rescue["lng"])
     pickup_mi = road_miles(driver["lat"], driver["lng"], r[0], r[1])
-    arrive_min = drive_minutes(pickup_mi)
+    arrive_min = pickup_eta["p50"]
     if minutes_left is not None and arrive_min > minutes_left:
         return None  # this driver cannot reach the restaurant before the pickup deadline
 
@@ -105,7 +110,8 @@ def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float]) -> Op
     for s in stops:
         route_mi += road_miles(here[0], here[1], s["lat"], s["lng"])
         here = (s["lat"], s["lng"])
-    eta_min = offline_eta_minutes(pickup_mi + route_mi, 1 + len(stops))
+    eta = {k: pickup_eta[k] + plan_eta[k] for k in ("p10", "p50", "p90")}
+    eta_min = eta["p50"]
 
     urgency = 0.0 if minutes_left is None else min(max(1 - minutes_left / URGENCY_HORIZON_MINUTES, 0.0), 1.0)
     allocations = [{"need_id": s["need_id"], "meals": s["meals"]} for s in stops]
@@ -127,11 +133,33 @@ def _evaluate(rescue, driver, stops, needs, minutes_left: Optional[float]) -> Op
         "dropoff_miles": route_mi,
         "arrive_minutes": arrive_min,
         "eta_minutes": eta_min,
+        "eta_range": (eta["p10"], eta["p90"]),
+        "eta_source": "ml" if pickup_eta.get("source") == "ml" else "rule",
         "urgency": urgency,
         "demand_fit": fit,
         "score": round(sum(breakdown.values()), 2),
         "breakdown": breakdown,
     }
+
+
+def _eta_tables(rescue, drivers, plans):
+    """One batched ETA call for every driver -> restaurant leg and every plan's drop off legs."""
+    r = (float(rescue["lat"]), float(rescue["lng"]))
+    legs = [((d["lat"], d["lng"]), r, 0) for d in drivers]
+    spans = []
+    for stops in plans:
+        start = len(legs)
+        here = r
+        for s in stops:
+            legs.append((here, (s["lat"], s["lng"]), 1))  # 1 handling stop: loading or the previous drop off
+            here = (s["lat"], s["lng"])
+        spans.append((start, len(legs)))
+    preds = predict_legs(legs)
+    pickup = preds[: len(drivers)]
+    per_plan = [
+        {**sum_legs(preds[a:b]), "legs": [round(p["p50"], 1) for p in preds[a:b]]} for a, b in spans
+    ]
+    return pickup, per_plan
 
 
 def _reasons(best, options, minutes_left: Optional[float]) -> List[str]:
@@ -156,11 +184,12 @@ def _reasons(best, options, minutes_left: Optional[float]) -> List[str]:
 
     if minutes_left is not None and best["urgency"] > 0.5:
         reasons.append(
-            f"Pickup deadline is in {minutes_left:.0f} min, so speed was weighted heavily; pickup in about {best['arrive_minutes'] + 1:.0f} min"
+            f"Pickup deadline is in {minutes_left:.0f} min, so speed was weighted heavily; pickup in about {best['arrive_minutes']:.0f} min"
         )
     else:
         reasons.append(
             f"Total trip {best['pickup_miles'] + best['dropoff_miles']:.1f} mi, about {best['eta_minutes']:.0f} min door to door"
+            f" (likely {best['eta_range'][0]:.0f} to {best['eta_range'][1]:.0f} min)"
         )
     return reasons[:4]
 
@@ -198,10 +227,11 @@ def find_best_match(
     near_needs = [{**n, "distance_miles": haversine_miles(n["lat"], n["lng"], r[0], r[1])} for n in near_needs]
     plans = _plans(meals, near_needs, r)
 
+    pickup_etas, plan_etas = _eta_tables(rescue, near_drivers, plans)
     options = []
-    for driver in near_drivers:
-        for stops in plans:
-            option = _evaluate(rescue, driver, stops, near_needs, minutes_left)
+    for driver, pickup_eta in zip(near_drivers, pickup_etas):
+        for stops, plan_eta in zip(plans, plan_etas):
+            option = _evaluate(rescue, driver, stops, near_needs, minutes_left, pickup_eta, plan_eta)
             if option is not None:
                 options.append(option)
     if not options:
@@ -217,6 +247,9 @@ def find_best_match(
         "pickup_miles": round(best["pickup_miles"], 2),
         "dropoff_miles": round(best["dropoff_miles"], 2),
         "eta_minutes": round(best["eta_minutes"], 1),
+        "eta_range_minutes": [round(best["eta_range"][0], 1), round(best["eta_range"][1], 1)],
+        "pickup_eta_minutes": round(best["arrive_minutes"], 1),
+        "eta_source": best["eta_source"],
         "score": best["score"],
         "reasons": _reasons(best, options, minutes_left),
         "top_candidates": [

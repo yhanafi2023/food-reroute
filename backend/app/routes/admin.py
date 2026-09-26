@@ -1,6 +1,4 @@
 """Admin network view, batch matching, simulation, ML, impact, demo reset."""
-from datetime import datetime
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -15,6 +13,7 @@ from app.serializers import delivery_json, driver_json, match_json, need_json, o
 from app.simulation import build_simulation
 
 router = APIRouter(tags=["admin"])
+REAL_FORECAST_MIN_DAYS = 90
 
 
 @router.get("/admin/network")
@@ -61,10 +60,20 @@ def ml_predict(body: PredictIn, user: User = Depends(require_role("ADMIN", "REST
 
 @router.get("/ml/forecast")
 def ml_forecast(user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
-    restaurants = db.query(Restaurant).all()
+    """The surplus forecast needs real surplus history. The prototype model in
+    intelligence/ml is trained on synthetic data, so it is not served here."""
+    from app.models import SurplusLog
+
+    logged_days = db.query(SurplusLog).count()
     return {
-        "forecast": intelligence.forecast_tonight(restaurants, when=datetime.now()),
-        "label": "Prototype model, synthetic training data",
+        "available": False,
+        "forecast": [],
+        "logged_days": logged_days,
+        "needed_days": REAL_FORECAST_MIN_DAYS,
+        "label": "Not available: needs real surplus history",
+        "reason": ("The only trained surplus model uses synthetic data, so FoodFlow does not show its predictions. "
+                   f"A forecast can be trained once businesses have logged at least {REAL_FORECAST_MIN_DAYS} real days "
+                   "in the seven-day surplus log."),
     }
 
 
@@ -74,8 +83,9 @@ def ml_info():
 
 
 @router.get("/impact")
-def impact(db: Session = Depends(get_db)):
-    return intelligence.compute_impact(db)
+def impact(include_demo: bool = False, db: Session = Depends(get_db)):
+    """Public impact counts only real confirmed deliveries unless include_demo=true."""
+    return intelligence.compute_impact(db, include_demo=include_demo)
 
 
 @router.post("/demo/reset")

@@ -13,6 +13,10 @@ export interface MapViewProps {
   restaurants?: MapPoint[];
   drivers?: MapPoint[];
   organizations?: MapPoint[];
+  prospects?: MapPoint[];
+  reference?: MapPoint | null;
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
   routes?: MapRoute[];
   movers?: Mover[];
   chips?: string[];
@@ -122,18 +126,20 @@ function Movers({ movers }: { movers: Mover[] }) {
 }
 
 export default function MapView({
-  restaurants = [], drivers = [], organizations = [], routes = [], movers = [], chips = [], height = 380, fitKey,
+  restaurants = [], drivers = [], organizations = [], prospects = [], reference = null, selectedId = null, onSelect,
+  routes = [], movers = [], chips = [], height = 380, fitKey,
 }: MapViewProps) {
   const allPoints = useMemo<[number, number][]>(
     () => [
       ...restaurants.map((p) => [p.lat, p.lng] as [number, number]),
       ...drivers.map((p) => [p.lat, p.lng] as [number, number]),
       ...organizations.map((p) => [p.lat, p.lng] as [number, number]),
+      ...prospects.map((p) => [p.lat, p.lng] as [number, number]),
       ...routes.flatMap((r) => r.geometry),
     ],
-    [restaurants, drivers, organizations, routes],
+    [restaurants, drivers, organizations, prospects, routes],
   );
-  const key = fitKey ?? [...restaurants, ...drivers, ...organizations].map((p) => p.id).concat(routes.map((r) => r.id)).join("|");
+  const key = fitKey ?? [...restaurants, ...drivers, ...organizations, ...prospects].map((p) => p.id).concat(routes.map((r) => r.id)).join("|");
 
   return (
     <div className="map-shell" style={{ height }}>
@@ -176,6 +182,18 @@ export default function MapView({
             <Tooltip direction="top" offset={[0, -8]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
           </CircleMarker>
         ))}
+        {prospects.map((p) => (
+          <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={p.id === selectedId ? 11 : 8}
+            eventHandlers={onSelect ? { click: () => onSelect(p.id) } : undefined}
+            pathOptions={{ color: COLORS.restaurant, weight: p.id === selectedId ? 4 : 3, fillColor: "#fff", fillOpacity: 1 }}>
+            <Tooltip direction="top" offset={[0, -8]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
+          </CircleMarker>
+        ))}
+        {reference && (
+          <CircleMarker center={[reference.lat, reference.lng]} radius={7} pathOptions={{ color: "#fff", weight: 2, fillColor: "#0e1a2b", fillOpacity: 1 }}>
+            <Tooltip direction="top" offset={[0, -8]} permanent><strong>{reference.label}</strong></Tooltip>
+          </CircleMarker>
+        )}
         {drivers.map((p) => <GlidingDriver key={p.id} point={p} />)}
         <Movers movers={movers} />
       </MapContainer>
@@ -186,18 +204,19 @@ export default function MapView({
         </div>
       )}
       <div className="absolute bottom-2 left-2 z-[1000] flex flex-wrap gap-2 rounded-md bg-white/90 px-2 py-1 text-xs font-semibold text-ink-2">
-        <Legend color={COLORS.restaurant} label="Restaurant" />
-        <Legend color={COLORS.driver} label="Driver" />
-        <Legend color={COLORS.org} label="Organization" />
+        {restaurants.length > 0 && <Legend color={COLORS.restaurant} label="Restaurant (demo partner)" />}
+        {prospects.length > 0 && <Legend color={COLORS.restaurant} label="Researched prospect, not a partner" ring />}
+        {(drivers.length > 0 || movers.length > 0) && <Legend color={COLORS.driver} label="Driver" />}
+        {organizations.length > 0 && <Legend color={COLORS.org} label="Organization" />}
       </div>
     </div>
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
+function Legend({ color, label, ring = false }: { color: string; label: string; ring?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={{ background: color }} />
+      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={ring ? { border: `3px solid ${color}`, background: "#fff" } : { background: color }} />
       {label}
     </span>
   );

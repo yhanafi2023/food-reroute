@@ -44,7 +44,15 @@ function readableDetail(detail: unknown): string {
   return "Something went wrong";
 }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+export const REQUEST_TIMEOUT_MS = 15000;
+
+export function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
+// `signal` cancels the request (navigation, a newer search, the user pressing Cancel).
+// Every request also times out after REQUEST_TIMEOUT_MS so a dead connection never hangs the UI.
+export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const method = options.method ?? "GET";
   if (USE_MOCKS) return mockRequest<T>(method, path, options.body);
 
@@ -52,16 +60,24 @@ export async function api<T>(path: string, options: { method?: string; body?: un
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout.signal]) : timeout.signal;
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal,
     });
-  } catch {
-    throw new ApiError(`Cannot reach the FoodFlow server at ${API_URL}. Is the backend running?`, 0);
+  } catch (e) {
+    clearTimeout(timer);
+    if (options.signal?.aborted) throw e; // cancelled by the caller: not an error to show
+    if (timeout.signal.aborted) throw new ApiError("The server took too long to answer. Check your connection and try again.", 0);
+    throw new ApiError(`Cannot reach the FoodFlow server at ${API_URL}. Check your connection; FoodFlow will keep retrying.`, 0);
   }
+  clearTimeout(timer);
   if (!res.ok) {
     let detail: unknown = res.statusText;
     try {

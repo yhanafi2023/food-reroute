@@ -33,7 +33,9 @@ def test_full_demo_flow(client):
     rest, drv, org, shelter, admin = (login(client, e) for e in (
         "restaurant@demo.com", "driver@demo.com", "org@demo.com", "shelter@demo.com", "admin@demo.com"))
     before = client.get("/impact").json()
-    assert before["includes_demo_data"] is True
+    assert before["includes_demo_data"] is False  # public impact counts only real deliveries
+    assert before["meals_rescued"] == 0
+    assert client.get("/impact?include_demo=true").json()["includes_demo_data"] is True
 
     r = client.post("/rescues", json={**RESCUE, "pickup_deadline": future()}, headers=rest)
     assert r.status_code == 200, r.text
@@ -71,9 +73,12 @@ def test_full_demo_flow(client):
     r = client.post(f"/deliveries/{delivery['id']}/confirm", headers=shelter)
     assert r.status_code == 200 and r.json()["status"] == "CONFIRMED"
 
-    after = client.get("/impact").json()
-    assert after["meals_rescued"] == before["meals_rescued"] + 50
-    assert after["deliveries_completed"] == before["deliveries_completed"] + 1
+    # the demo restaurant is a fictional partner: public (real) impact is unchanged, demo-inclusive impact grows
+    assert client.get("/impact").json()["meals_rescued"] == 0
+    demo_before = 87  # seeded fictional history
+    after = client.get("/impact?include_demo=true").json()
+    assert after["meals_rescued"] == demo_before + 50
+    assert after["deliveries_completed"] == 3 + 1
     needs = client.get("/organizations/needs", headers=org).json()
     assert any(n["status"] == "FULFILLED" and n["meals_fulfilled"] == 30 for n in needs)
     stats = client.get("/restaurants/dashboard", headers=rest).json()["stats"]
@@ -160,7 +165,7 @@ def test_admin_batch_matching_simulation_and_ml(client):
     assert len(first["stops"]) == 2
 
     forecast = client.get("/ml/forecast", headers=admin).json()
-    assert len(forecast["forecast"]) == 6 and "synthetic" in forecast["label"]
+    assert forecast["available"] is False and forecast["forecast"] == []  # no synthetic predictions served
     assert client.get("/ml/info").json()["data"] == "prototype trained on synthetic data"
     p = client.post("/ml/predict", json={"day_of_week": 5, "hour": 21, "food_category": "buffet"}, headers=admin).json()
     assert 0 <= p["probability"] <= 1

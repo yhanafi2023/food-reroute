@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Brand } from "@/components/AppShell";
+import { TopNav } from "@/components/AppShell";
 
 const FLOW = [
   { n: "R", title: "Restaurant", text: "Posts safe surplus food" },
@@ -19,13 +19,7 @@ const STEPS = [
 export default function Landing() {
   return (
     <div className="min-h-screen">
-      <header className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-        <Brand />
-        <nav className="flex items-center gap-2" aria-label="Main">
-          <Link href="/impact" className="btn btn-ghost">Impact</Link>
-          <Link href="/login" className="btn btn-primary">Log in</Link>
-        </nav>
-      </header>
+      <TopNav />
 
       <main>
         <section className="mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-8 lg:grid-cols-[1.2fr_1fr]">

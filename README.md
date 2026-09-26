@@ -9,7 +9,8 @@ the donation across them, and routes a volunteer driver before the food expires.
 Restaurant → FoodFlow matching → Driver → Community organization → people served. People receiving food never
 need the app or a smartphone; organizations are the bridge.
 
-Built for ShellHacks 2026 at FIU. All numbers shown in the app are demo or simulated data unless stated otherwise.
+Built for ShellHacks 2026 at FIU, focused on Miami-Dade County around FIU. What is verified public data, what is
+simulated or fictional, and what needs a partner integration: [DATA_SOURCES.md](DATA_SOURCES.md).
 
 ## Quick start
 
@@ -19,11 +20,12 @@ One command (creates the venv, installs packages, copies env files, runs both se
 ./start.sh
 ```
 
-Or by hand. Backend:
+Or by hand. Backend (Python 3.10 or newer; on macOS use Homebrew's python3.13, because the Command Line Tools
+Python 3.9 cannot reach OSRM or Mapbox over TLS):
 
 ```bash
 cd backend
-python -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -48,9 +50,9 @@ org@demo.com (Community Food Bank), shelter@demo.com (Hope Shelter), admin@demo.
 ## Tests
 
 ```bash
-cd backend && .venv/bin/pytest                 # 34 tests: API flow, roles, logistics, allocation, ML, impact
+cd backend && .venv/bin/pytest                 # 46 tests: API flow, roles, logistics, allocation, ETA, tracking, prospects
 cd e2e && npm install && npx playwright install chromium
-npm run test:3x                                  # the DEMO.md click path, 3 times in a row
+npm run test:3x                                  # DEMO.md click path + mobile nav, simulation stop/restart, prospects
 ```
 
 ## Environment variables
@@ -64,11 +66,12 @@ Backend (`backend/.env`, see `backend/.env.example`):
 | `JWT_EXPIRE_HOURS` | `24` | Token lifetime |
 | `DEMO_MODE` | `true` | Seed demo data when the database is empty; offline routing unless a Mapbox token is set |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma separated frontend origins |
-| `ROUTING_PROVIDER` | auto | `mapbox`, `osrm` or `offline`. Auto: mapbox with a token, offline in demo mode, else osrm |
+| `ROUTING_PROVIDER` | auto | `mapbox`, `osrm` or `offline`. Auto: mapbox with a token, else osrm; failures fall back to offline |
 | `MAPBOX_ACCESS_TOKEN` | empty | Mapbox Directions API token (server side) |
 | `OSRM_URL` | `https://router.project-osrm.org` | OSRM server |
 | `MEAL_VALUE_USD` | `3.0` | **Assumption** used for the community value estimate. Replace with a sourced figure |
-| `SURPLUS_MODEL_PATH` | `app/intelligence/ml/artifacts/` | Where the forecast model is saved |
+| `SURPLUS_MODEL_PATH` | `app/intelligence/ml/artifacts/` | Where the (synthetic, not served) surplus prototype is saved |
+| `ETA_MODEL_PATH` | `app/intelligence/ml/artifacts/eta_model.joblib` | Where the ETA model is saved (trained from `data/eta_osrm_miami.csv` on first start) |
 
 Frontend (`frontend/.env.local`, see `frontend/.env.example`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USE_MOCKS`
 (run the UI with no backend), `NEXT_PUBLIC_MAPBOX_TOKEN` (public `pk.` token for map tiles; OpenStreetMap
@@ -99,11 +102,17 @@ checks role and ownership (a driver can only update their own delivery; an organ
 | `GET /admin/network` | admin | Every marker, active route, stats and impact |
 | `PATCH /drivers/me/availability` | driver | Go online or offline (hands a pending offer to the next driver) |
 | `GET /drivers/nearby?lat=&lng=&radius_miles=` | restaurant, org, admin | Available drivers by distance |
-| `GET /impact` | public | Impact totals |
+| `GET /impact` | public | Impact totals from real confirmed deliveries (`?include_demo=true` adds demo data) |
+| `GET /deliveries/{id}/tracking` | driver, restaurant, orgs on the route, admin | Driver position (GPS or estimated) and ML ETA to your location |
+| `PATCH /drivers/me/location` | driver | Share live GPS |
+| `GET /ml/eta`, `POST /ml/eta/retrain` | admin | ETA model metrics; retrain with logged real trips |
+| `GET /prospects`, `/prospects/meta`, `/prospects/{id}` | admin | Researched Miami prospects (filters: q, neighborhood, business_type, evidence, max_miles) |
+| `GET /prospects/opportunities` | admin | Ranked opportunities (measured surplus only) |
+| `PUT /prospects/{id}/surplus-log`, `PUT /restaurants/me/surplus-log` | admin, restaurant | Seven-day surplus log |
 | `POST /matching/run` | admin | Batch match all open rescues |
 | `POST /simulation/run` | admin | Timed events for Simulate Tonight |
 | `POST /ml/predict` | admin, restaurant | Surplus probability for one set of features |
-| `GET /ml/forecast` | admin | Tonight's surplus probability per restaurant |
+| `GET /ml/forecast` | admin | Not available until real surplus history exists (the prototype is synthetic) |
 | `GET /ml/info` | public | Model name, ROC AUC, synthetic data note |
 | `POST /demo/reset` | admin | Restore the demo seed (about 40 ms) |
 
@@ -174,6 +183,20 @@ Splitting a rescue across organizations (greedy by priority, deadline, distance;
 forecast prototype trained on **synthetic** data (LogisticRegression vs GradientBoosting, time based split, best
 ROC AUC kept), and impact metrics. Details, feature choices and complexity:
 [backend/app/intelligence/README.md](backend/app/intelligence/README.md).
+
+## Driver ETA and live tracking
+
+Matching, simulation and tracking use an ETA model trained on 27,172 real OSRM road-network travel times in
+Miami-Dade: gradient boosting for the P50 (2.8 min average error on held-out places vs 10.0 for the old 22 mph
+rule) and conformal-calibrated quantile models for a P10 to P90 range, plus an assumed 6 minutes per handling stop.
+Dashboards poll `/deliveries/{id}/tracking` every 3 seconds: the driver's live GPS when shared, otherwise a position
+estimated along the real route leg, and the ETA to the viewer's own location. Details: [DATA_SOURCES.md](DATA_SOURCES.md).
+
+## Miami prospect directory
+
+`/admin/prospects` lists 14 researched businesses near FIU with sources, dates checked, contact details, evidence
+level and "unknown" wherever data is missing. They are not partners. Businesses are ranked only after a measured
+quantity exists; the seven-day surplus log (also at `/restaurant/surplus-log` for enrolled restaurants) produces one.
 
 ## Simulate Tonight
 

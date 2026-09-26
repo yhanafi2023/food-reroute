@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import AppShell, { ErrorNote, Loading, Stat } from "@/components/AppShell";
+import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import FlowMap, { type MapRoute, type Mover } from "@/components/FlowMap";
 import WhyThisMatch from "@/components/WhyThisMatch";
-import { api } from "@/lib/api";
+import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
 import { clock, minutesUntil, number, until, usd } from "@/lib/format";
-import type { Forecast, Match, ModelInfo, Network, SimEvent, Simulation } from "@/lib/types";
+import type { EtaInfo, Forecast, Match, Network, SimEvent, Simulation } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
 interface SimState {
   running: boolean;
+  stopped: boolean;
   clock: string;
   movers: Mover[];
   routes: MapRoute[];
@@ -21,7 +22,7 @@ interface SimState {
 }
 
 const EMPTY_SIM: SimState = {
-  running: false, clock: "", movers: [], routes: [], posted: [], feed: [], done: false,
+  running: false, stopped: false, clock: "", movers: [], routes: [], posted: [], feed: [], done: false,
   totals: { meals_rescued: 0, lbs_diverted: 0, deliveries_completed: 0 },
 };
 
@@ -55,11 +56,39 @@ function CountUp({ value, format = number }: { value: number; format?: (n: numbe
   return <span className="num">{format(Math.round(shown))}</span>;
 }
 
+function applyEvents(s: SimState, due: SimEvent[]): SimState {
+  const st = { ...s };
+  for (const e of due) {
+    st.clock = e.clock;
+    st.feed = [{ key: `${e.type}-${e.t_ms}-${"rescue_id" in e ? e.rescue_id : e.rescue.id}`, clock: e.clock, text: describe(e) }, ...st.feed].slice(0, 7);
+    if (e.type === "rescue_posted") st.posted = [...st.posted, { id: e.rescue.id, name: e.rescue.restaurant_name, lat: e.rescue.lat, lng: e.rescue.lng }];
+    if (e.type === "matched") {
+      st.routes = [...st.routes, { id: `sim${e.rescue_id}`, geometry: e.route.geometry, stops: e.stops.map((x) => ({ lat: x.lat, lng: x.lng, label: x.name })) }];
+      st.movers = [
+        ...st.movers.filter((m) => m.id !== `sim-d${e.driver.id}-idle`),
+        { id: `sim-d${e.driver.id}-${e.rescue_id}`, name: e.driver.name, path: e.route.geometry, startedAt: performance.now(), durationMs: e.duration_ms },
+      ];
+    }
+    if (e.type === "delivered") {
+      st.totals = e.impact;
+      st.routes = st.routes.filter((r) => r.id !== `sim${e.rescue_id}`);
+      st.posted = st.posted.filter((p) => p.id !== e.rescue_id);
+      // the driver waits at the last drop off until the next match
+      const finished = st.movers.find((m) => m.id === `sim-d${e.driver_id}-${e.rescue_id}`);
+      st.movers = st.movers.filter((m) => m !== finished);
+      if (finished) st.movers = [...st.movers, { ...finished, id: `sim-d${e.driver_id}-idle`, path: [finished.path[finished.path.length - 1]], durationMs: 1 }];
+    }
+  }
+  return st;
+}
+
 export default function AdminDashboardPage() {
   const user = useRequireRole("ADMIN");
-  const { data, error, refresh } = usePoll<Network>(user ? "/admin/network" : null);
+  const { data, error, refresh, updatedAt } = usePoll<Network>(user ? "/admin/network" : null);
   const [forecast, setForecast] = useState<Forecast | null>(null);
-  const [info, setInfo] = useState<ModelInfo | null>(null);
+  const [eta, setEta] = useState<EtaInfo | null>(null);
+  const runRef = useRef<Simulation | null>(null);
+  const fetchRef = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
   const [lastMatch, setLastMatch] = useState<Match | null>(null);
@@ -68,11 +97,16 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    api<Forecast>("/ml/forecast").then(setForecast).catch(() => setForecast(null));
-    api<ModelInfo>("/ml/info").then(setInfo).catch(() => setInfo(null));
+    const ctrl = new AbortController();
+    api<Forecast>("/ml/forecast", { signal: ctrl.signal }).then(setForecast).catch(() => undefined);
+    api<EtaInfo>("/ml/eta", { signal: ctrl.signal }).then(setEta).catch(() => undefined);
+    return () => ctrl.abort();
   }, [user]);
 
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+  useEffect(() => () => {
+    cancelAnimationFrame(rafRef.current);
+    fetchRef.current?.abort();
+  }, []);
 
   const liveLayer = useMemo(() => {
     if (!data) return null;
@@ -105,17 +139,36 @@ export default function AdminDashboardPage() {
 
   async function simulate() {
     cancelAnimationFrame(rafRef.current);
+    fetchRef.current?.abort();
+    const ctrl = new AbortController();
+    fetchRef.current = ctrl;
     setBusy("sim");
     setNote(null);
-    let run: Simulation;
     try {
-      run = await api<Simulation>("/simulation/run", { method: "POST" });
+      const run = await api<Simulation>("/simulation/run", { method: "POST", signal: ctrl.signal });
+      runRef.current = run;
+      play(run);
     } catch (e) {
-      setNote({ kind: "bad", text: (e as Error).message });
+      if (!isAbort(e)) setNote({ kind: "bad", text: (e as Error).message });
+    } finally {
+      if (fetchRef.current === ctrl) fetchRef.current = null;
       setBusy(null);
-      return;
     }
-    setBusy(null);
+  }
+
+  function stopSimulation() {
+    cancelAnimationFrame(rafRef.current);
+    fetchRef.current?.abort();
+    setSim((s) => ({ ...s, running: false, stopped: true }));
+  }
+
+  function restartSimulation() {
+    if (runRef.current) play(runRef.current);
+    else simulate();
+  }
+
+  function play(run: Simulation) {
+    cancelAnimationFrame(rafRef.current);
     setSim({ ...EMPTY_SIM, running: true, clock: run.start_clock });
     let elapsed = 0;
     let last = performance.now();
@@ -127,40 +180,14 @@ export default function AdminDashboardPage() {
       last = now;
       const due: SimEvent[] = [];
       while (next < events.length && events[next].t_ms <= elapsed) due.push(events[next++]);
-      if (due.length) {
-        setSim((s) => {
-          const st = { ...s };
-          for (const e of due) {
-            st.clock = e.clock;
-            st.feed = [{ key: `${e.type}-${e.t_ms}-${"rescue_id" in e ? e.rescue_id : e.rescue.id}`, clock: e.clock, text: describe(e) }, ...st.feed].slice(0, 7);
-            if (e.type === "rescue_posted") st.posted = [...st.posted, { id: e.rescue.id, name: e.rescue.restaurant_name, lat: e.rescue.lat, lng: e.rescue.lng }];
-            if (e.type === "matched") {
-              st.routes = [...st.routes, { id: `sim${e.rescue_id}`, geometry: e.route.geometry, stops: e.stops.map((x) => ({ lat: x.lat, lng: x.lng, label: x.name })) }];
-              st.movers = [
-                ...st.movers.filter((m) => m.id !== `sim-d${e.driver.id}-idle`),
-                { id: `sim-d${e.driver.id}-${e.rescue_id}`, name: e.driver.name, path: e.route.geometry, startedAt: performance.now(), durationMs: e.duration_ms },
-              ];
-            }
-            if (e.type === "delivered") {
-              st.totals = e.impact;
-              st.routes = st.routes.filter((r) => r.id !== `sim${e.rescue_id}`);
-              st.posted = st.posted.filter((p) => p.id !== e.rescue_id);
-              // the driver waits at the last drop off until the next match
-              const finished = st.movers.find((m) => m.id === `sim-d${e.driver_id}-${e.rescue_id}`);
-              st.movers = st.movers.filter((m) => m !== finished);
-              if (finished) st.movers = [...st.movers, { ...finished, id: `sim-d${e.driver_id}-idle`, path: [finished.path[finished.path.length - 1]], durationMs: 1 }];
-            }
-          }
-          return st;
-        });
-      }
+      if (due.length) setSim((s) => applyEvents(s, due));
       if (elapsed < run.duration_ms) rafRef.current = requestAnimationFrame(frame);
       else setSim((s) => ({ ...s, running: false, done: true, clock: run.end_clock }));
     };
     rafRef.current = requestAnimationFrame(frame);
   }
 
-  const simActive = sim.running || sim.done;
+  const simActive = sim.running || sim.done || sim.stopped;
   const impact = data?.impact;
 
   return (
@@ -176,9 +203,13 @@ export default function AdminDashboardPage() {
             })}>
             {busy === "match" ? "Matching..." : "Run Matching"}
           </button>
-          <button className="btn btn-primary" disabled={!!busy || sim.running} onClick={simulate}>
-            {sim.running ? "Simulating..." : "Simulate Tonight"}
-          </button>
+          {sim.running ? (
+            <button className="btn btn-primary" onClick={stopSimulation}>Stop simulation</button>
+          ) : sim.stopped || sim.done ? (
+            <button className="btn btn-primary" disabled={!!busy} onClick={restartSimulation}>Restart simulation</button>
+          ) : (
+            <button className="btn btn-primary" disabled={!!busy} onClick={simulate}>{busy === "sim" ? "Loading..." : "Simulate Tonight"}</button>
+          )}
           <button className="btn btn-danger" disabled={!!busy}
             onClick={() => act("reset", () => api("/demo/reset", { method: "POST" }), () => {
               setLastMatch(null);
@@ -190,7 +221,11 @@ export default function AdminDashboardPage() {
         </div>
       }
     >
-      <ErrorNote message={error} />
+      <div className="flex flex-wrap items-center gap-2">
+        <LiveStatus updatedAt={updatedAt} error={error} />
+        <span className="text-sm text-ink-3">Restaurants, drivers and organizations on this map are fictional demo accounts. Researched Miami businesses are on the <a className="font-semibold text-accent underline" href="/admin/prospects">Prospects</a> page.</span>
+      </div>
+      <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {note && <div className={`alert ${note.kind === "good" ? "alert-good" : "alert-bad"}`} role="status">{note.text}</div>}
       {!data || !liveLayer ? <Loading what="network" /> : (
         <>
@@ -230,7 +265,8 @@ export default function AdminDashboardPage() {
                       <li key={f.key} className="grid grid-cols-[64px_1fr] gap-2"><span className="mono text-ink-3">{f.clock}</span><span>{f.text}</span></li>
                     ))}
                   </ol>
-                  {sim.done && <button className="btn btn-ghost" onClick={() => setSim(EMPTY_SIM)}>Back to live network</button>}
+                  {sim.stopped && <p className="text-sm text-ink-2">Stopped at {sim.clock}. Restart replays the same run from 6 PM.</p>}
+                  {(sim.done || sim.stopped) && <button className="btn btn-ghost" onClick={() => setSim(EMPTY_SIM)}>Back to live network</button>}
                 </section>
               ) : (
                 <section className="panel flex flex-col gap-3">
@@ -259,38 +295,86 @@ export default function AdminDashboardPage() {
 
           {lastMatch && <WhyThisMatch candidates={lastMatch.top_candidates} reasons={lastMatch.reasons} />}
 
-          <section className="panel flex flex-col gap-4" aria-labelledby="forecast-title">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 id="forecast-title">Surplus forecast for tonight</h3>
-              <span className="chip chip-warn">Prototype model, synthetic training data</span>
-            </div>
-            <p className="max-w-[70ch] text-sm text-ink-2">
-              Chance each restaurant has at least 10 surplus meals this evening, so drivers can be staged nearby.
-              {info && ` Model: ${info.model_name}, ROC AUC ${info.roc_auc.toFixed(2)} on held out synthetic data.`}
-            </p>
-            {!forecast ? <span className="text-ink-3">Loading forecast...</span> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left"><th className="eyebrow py-2">Restaurant</th><th className="eyebrow py-2">Probability</th><th className="sr-only">Bar</th></tr>
-                  </thead>
-                  <tbody>
-                    {forecast.forecast.map((f) => (
-                      <tr key={f.restaurant} className="border-t border-line">
-                        <td className="py-2 pr-4 font-semibold">{f.restaurant}</td>
-                        <td className="mono num py-2 pr-4">{Math.round(f.probability * 100)}%</td>
-                        <td className="w-1/2 py-2">
-                          <div className="bar" aria-hidden><i style={{ width: `${f.probability * 100}%` }} /></div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <EtaPanel info={eta} onRetrained={setEta} />
+            <section className="panel flex flex-col gap-3" aria-labelledby="forecast-title">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 id="forecast-title">Surplus forecast</h3>
+                <span className="chip chip-warn">Needs real data</span>
               </div>
-            )}
-          </section>
+              {!forecast ? <span className="text-ink-3">Loading...</span> : (
+                <>
+                  <p className="text-sm text-ink-2">{forecast.reason}</p>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold">{forecast.logged_days ?? 0} of {forecast.needed_days} real logged days</span>
+                    <div className="bar" role="progressbar" aria-valuenow={forecast.logged_days ?? 0} aria-valuemin={0} aria-valuemax={forecast.needed_days}
+                      aria-label="Real surplus days logged"><i style={{ width: `${Math.min(100, ((forecast.logged_days ?? 0) / (forecast.needed_days || 1)) * 100)}%` }} /></div>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
         </>
       )}
     </AppShell>
+  );
+}
+
+function EtaPanel({ info, onRetrained }: { info: EtaInfo | null; onRetrained: (i: EtaInfo) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!info) return <div className="skeleton h-64" aria-hidden />;
+  const m = info.metrics;
+  async function retrain() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ real_trips_used: number }>("/ml/eta/retrain", { method: "POST" });
+      setMsg(`Retrained with ${r.real_trips_used} real trip legs.`);
+      onRetrained(await api<EtaInfo>("/ml/eta"));
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const rows: [string, number][] = [
+    ["Old rule (22 mph)", m.mae_minutes.rule_22mph],
+    ["Ridge regression", m.mae_minutes.ridge],
+    ["Gradient boosting (used)", m.mae_minutes.hist_gradient_boosting],
+  ];
+  const worst = Math.max(...rows.map((r) => r[1]));
+  return (
+    <section className="panel flex flex-col gap-3" aria-labelledby="eta-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="eta-title">Driver ETA model</h3>
+        <span className="chip chip-good">Real road-network data</span>
+      </div>
+      <p className="text-sm text-ink-2">
+        Trained on {info.data.pairs?.toLocaleString("en-US")} real driving times between Miami-Dade points from {info.data.source}
+        {" "}({info.data.map_data}), fetched {info.data.fetched}. Average error on held-out places, lower is better:
+      </p>
+      <div className="grid gap-1" role="table" aria-label="Average ETA error by model">
+        {rows.map(([label, v]) => (
+          <div key={label} role="row" className="grid grid-cols-[170px_1fr_64px] items-center gap-2 text-sm">
+            <span role="rowheader">{label}</span>
+            <span role="cell" className="bar" aria-hidden><i style={{ width: `${(v / worst) * 100}%` }} /></span>
+            <span role="cell" className="mono num text-right">{v.toFixed(1)} min</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm text-ink-2">
+        The likely range (P10 to P90) held {Math.round(m.p10_p90_coverage * 100)}% of held-out trips after calibration
+        ({Math.round(m.p10_p90_coverage_before_calibration * 100)}% before). {info.assumptions.join(" ")}.
+      </p>
+      <p className="text-xs text-ink-3">{info.data.limitations} Real FoodFlow trips logged: {info.logged_legs} ({info.usable_real_legs} usable).
+        {info.real_leg_mae_minutes != null ? ` Error on real trips: ${info.real_leg_mae_minutes} min.` : ""}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn btn-ghost" disabled={busy || info.usable_real_legs === 0} onClick={retrain}>
+          {busy ? "Retraining..." : "Retrain with real trips"}
+        </button>
+        {msg && <span className="text-sm text-ink-2" role="status">{msg}</span>}
+      </div>
+    </section>
   );
 }

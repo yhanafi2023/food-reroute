@@ -184,3 +184,13 @@ textarea.input { min-height: 88px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
+
+/* ---------- loading placeholders ---------- */
+.skeleton {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--wash) 0%, #f3f7fc 50%, var(--wash) 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+@keyframes skeleton { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

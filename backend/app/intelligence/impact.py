@@ -68,7 +68,11 @@ def summarize_impact(events: Iterable[Mapping[str, Any]], value_per_meal: float)
     }
 
 
-def compute_impact(db: Any) -> Dict[str, Any]:
-    """Impact contract object from the database. `db` is a SQLAlchemy Session or Connection."""
+def compute_impact(db: Any, include_demo: bool = True) -> Dict[str, Any]:
+    """Impact contract object from the database. `db` is a SQLAlchemy Session or Connection.
+
+    include_demo=False counts only real deliveries (no demo seed rows)."""
     rows = db.execute(IMPACT_EVENTS_QUERY).mappings().all()
+    if not include_demo:
+        rows = [r for r in rows if not r["is_demo_seed"]]
     return summarize_impact(rows, meal_value_usd())

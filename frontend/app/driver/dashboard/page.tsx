@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import AppShell, { ErrorNote, Loading, Stat } from "@/components/AppShell";
+import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
 import FlowMap from "@/components/FlowMap";
 import { matchMapProps } from "@/components/MatchCard";
@@ -10,11 +10,14 @@ import { useRequireRole } from "@/lib/auth";
 import { clock, miles, minutes, nextStep, number, until } from "@/lib/format";
 import type { DriverDashboard } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
+import { useShareLocation } from "@/lib/useShareLocation";
 
 export default function DriverDashboardPage() {
   const user = useRequireRole("DRIVER");
-  const { data, error, refresh } = usePoll<DriverDashboard>(user ? "/drivers/dashboard" : null);
+  const { data, error, refresh, updatedAt } = usePoll<DriverDashboard>(user ? "/drivers/dashboard" : null);
   const [busy, setBusy] = useState(false);
+  const [shareGps, setShareGps] = useState(false);
+  const gps = useShareLocation(shareGps && !!user);
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (!user) return null;
@@ -41,15 +44,29 @@ export default function DriverDashboardPage() {
       title={data ? `Hi, ${data.driver.name}` : "Driver"}
       subtitle="One offer at a time, one next step at a time."
       actions={data && (
+        <div className="flex flex-wrap items-center gap-2">
+        <LiveStatus updatedAt={updatedAt} error={error} />
+        <label className="panel panel-tight flex items-center gap-3">
+          <input type="checkbox" role="switch" className="h-6 w-6" checked={shareGps} onChange={(e) => setShareGps(e.target.checked)}
+            aria-label="Share live location" />
+          <span className="flex flex-col">
+            <span className="font-semibold">Share live location</span>
+            <span className="text-xs text-ink-3">
+              {gps.state === "sharing" ? "Sharing GPS" : gps.state === "waiting" ? gps.message : gps.state === "error" ? gps.message : "Off: position is estimated from the route"}
+            </span>
+          </span>
+        </label>
         <label className="panel panel-tight flex items-center gap-3">
           <input type="checkbox" role="switch" className="h-6 w-6" checked={data.driver.is_available} disabled={busy || !!active}
             onChange={(e) => act(() => api("/drivers/me/availability", { method: "PATCH", body: { is_available: e.target.checked } }))}
             aria-label="Available for rescues" />
           <span className="font-semibold">{data.driver.is_available ? "Available" : active ? "On a delivery" : "Offline"}</span>
         </label>
+        </div>
       )}
     >
-      <ErrorNote message={error ?? actionError} />
+      <ErrorNote message={actionError} />
+      <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {!data ? <Loading /> : (
         <>
           {offer && (
@@ -66,6 +83,7 @@ export default function DriverDashboardPage() {
                     <span className="chip">to pickup {miles(offer.match.pickup_miles)}</span>
                     <span className="chip">drop offs {miles(offer.match.dropoff_miles)}</span>
                     <span className="chip chip-accent">about {minutes(offer.match.eta_minutes)}</span>
+                    {offer.match.eta_range_minutes && <span className="chip">likely {Math.round(offer.match.eta_range_minutes[0])} to {Math.round(offer.match.eta_range_minutes[1])} min</span>}
                   </div>
                   <ol className="transit" aria-label="Stops">
                     <li className="done"><span className="dot">P</span><span className="label">{offer.rescue.restaurant_name}</span></li>

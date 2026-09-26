@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
-import AppShell, { ErrorNote, Loading, Stat } from "@/components/AppShell";
+import { useEffect, useRef, useState } from "react";
+import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
 import MatchCard from "@/components/MatchCard";
 import StatusTimeline from "@/components/StatusTimeline";
-import { api } from "@/lib/api";
+import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
 import { clock, defaultDeadline, number, until } from "@/lib/format";
 import type { CreateRescueResponse, RescueDetail, RestaurantDashboard } from "@/lib/types";
@@ -15,7 +15,9 @@ const EMPTY = { food_type: "Rice, black beans and roast chicken", meals: "50", w
 
 export default function RestaurantDashboardPage() {
   const user = useRequireRole("RESTAURANT");
-  const { data, error, refresh } = usePoll<RestaurantDashboard>(user ? "/restaurants/dashboard" : null);
+  const { data, error, refresh, updatedAt } = usePoll<RestaurantDashboard>(user ? "/restaurants/dashboard" : null);
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), []);
   const [form, setForm] = useState(() => ({ ...EMPTY, pickup_deadline: defaultDeadline() }));
   const [finding, setFinding] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -35,11 +37,14 @@ export default function RestaurantDashboardPage() {
     }
     setFinding(true);
     setResult(null);
+    const ctrl = new AbortController();
+    pending.current = ctrl;
     const minWait = new Promise((r) => setTimeout(r, 1500));
     try {
       const [res] = await Promise.all([
         api<CreateRescueResponse>("/rescues", {
           method: "POST",
+          signal: ctrl.signal,
           body: {
             food_type: form.food_type, meals: Number(form.meals), weight_lbs: Number(form.weight_lbs),
             pickup_address: form.pickup_address || undefined, pickup_deadline: new Date(form.pickup_deadline).toISOString(),
@@ -48,14 +53,25 @@ export default function RestaurantDashboardPage() {
         }),
         minWait,
       ]);
+      if (ctrl.signal.aborted) return;
       setResult(res);
       refresh();
     } catch (err) {
-      await minWait;
-      setFormError((err as Error).message);
+      if (isAbort(err) || ctrl.signal.aborted) {
+        setFormError("Stopped waiting. If the server already received the rescue it will appear under Your rescues.");
+        refresh();
+      } else {
+        await minWait;
+        setFormError((err as Error).message);
+      }
     } finally {
+      if (pending.current === ctrl) pending.current = null;
       setFinding(false);
     }
+  }
+
+  function cancelFinding() {
+    pending.current?.abort();
   }
 
   const s = data?.stats;
@@ -63,8 +79,12 @@ export default function RestaurantDashboardPage() {
   const history = data?.rescues.filter((r) => r.rescue.id !== result?.rescue.id) ?? [];
 
   return (
-    <AppShell title={data?.restaurant.name ?? "Restaurant"} subtitle="Post surplus food. FoodFlow finds a driver and the organizations that need it.">
-      <ErrorNote message={error} />
+    <AppShell title={data?.restaurant.name ?? "Restaurant"} subtitle="Post surplus food. FoodFlow finds a driver and the organizations that need it."
+      actions={<div className="flex flex-wrap items-center gap-2">
+        <span className="chip">Fictional demo partner</span>
+        <LiveStatus updatedAt={updatedAt} error={error} />
+      </div>}>
+      <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {!data ? <Loading /> : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat label="Active rescues" value={s!.active} />
@@ -105,7 +125,8 @@ export default function RestaurantDashboardPage() {
           {finding && (
             <div className="panel panel-accent flex items-center gap-3" role="status">
               <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-accent" aria-hidden />
-              <strong>Finding the most efficient rescue match...</strong>
+              <strong className="flex-1">Finding the most efficient rescue match...</strong>
+              <button type="button" className="btn btn-ghost" onClick={cancelFinding}>Cancel</button>
             </div>
           )}
           {!finding && result && !result.match && (

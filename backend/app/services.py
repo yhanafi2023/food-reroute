@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from fastapi import HTTPException
@@ -9,7 +10,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.logistics import RESCUE_STATUS_FOR_DELIVERY, find_best_match, get_route, next_status, run_batch
-from app.models import Delivery, Driver, FoodNeed, FoodRescue, ImpactEvent, Match, MatchStop, utcnow
+from app.intelligence.eta.features import leg_features
+from app.intelligence.eta.model import predict_legs
+from app.models import Delivery, Driver, FoodNeed, FoodRescue, ImpactEvent, Match, MatchStop, TripLeg, utcnow
 from app.serializers import iso
 
 
@@ -83,6 +86,9 @@ def _save_match(db: Session, rescue: FoodRescue, result: Dict[str, Any]) -> Matc
         pickup_miles=result["pickup_miles"],
         dropoff_miles=result["dropoff_miles"],
         eta_minutes=result["eta_minutes"],
+        eta_range_minutes=result.get("eta_range_minutes", []),
+        pickup_eta_minutes=result.get("pickup_eta_minutes"),
+        eta_source=result.get("eta_source", "rule"),
         score=result["score"],
         reasons=result["reasons"],
         top_candidates=result["top_candidates"],
@@ -148,7 +154,7 @@ def accept(db: Session, rescue: FoodRescue, driver: Driver) -> Delivery:
         driver_id=driver.id,
         meals=rescue.meals,
         weight_lbs=rescue.weight_lbs,
-        route=get_route(points),
+        route=build_route(points),
         status_history=[],
         accepted_at=utcnow(),
     )
@@ -170,6 +176,42 @@ def decline(db: Session, rescue: FoodRescue, driver: Driver) -> Optional[Match]:
     return match_rescue(db, rescue)
 
 
+def build_route(points) -> Dict[str, Any]:
+    """Whole route for the map plus one road route and ML ETA per leg (for tracking)."""
+    route = get_route(points)
+    legs = [get_route([a, b]) for a, b in zip(points, points[1:])]
+    real = [None if leg["source"] == "offline" else leg["distance_miles"] for leg in legs]
+    etas = predict_legs([(a, b, 0 if i == 0 else 1) for i, (a, b) in enumerate(zip(points, points[1:]))], real)
+    route["legs"] = [
+        {"from": list(a), "to": list(b), "geometry": leg["geometry"], "distance_miles": leg["distance_miles"],
+         "source": leg["source"], "eta": {k: round(e[k], 1) for k in ("p10", "p50", "p90")}, "eta_source": e["source"]}
+        for (a, b), leg, e in zip(zip(points, points[1:]), legs, etas)
+    ]
+    route["ml_eta_minutes"] = round(sum(e["p50"] for e in etas), 1)
+    return route
+
+
+def _log_leg(db: Session, delivery: Delivery, index: int, started: datetime, ended: datetime) -> None:
+    """Record a real leg duration for retraining the ETA model."""
+    legs = delivery.route.get("legs") or []
+    if index >= len(legs):
+        return
+    leg = legs[index]
+    provider = None if leg["source"] == "offline" else leg["distance_miles"]
+    db.add(TripLeg(
+        delivery_id=delivery.id, leg_index=index, started_at=started, ended_at=ended,
+        actual_minutes=round((ended - started).total_seconds() / 60.0, 2), predicted_p50=leg["eta"]["p50"],
+        features=leg_features(tuple(leg["from"]), tuple(leg["to"]), provider),
+    ))
+
+
+def _entered(delivery: Delivery, status: str) -> Optional[datetime]:
+    for h in reversed(delivery.status_history):
+        if h["status"] == status:
+            return datetime.fromisoformat(h["at"].replace("Z", ""))
+    return None
+
+
 def advance(db: Session, delivery: Delivery, requested: str) -> Delivery:
     if requested == "CONFIRMED":
         raise HTTPException(400, "The receiving organization confirms receipt")
@@ -180,12 +222,19 @@ def advance(db: Session, delivery: Delivery, requested: str) -> Delivery:
     _log(delivery, requested)
     rescue, driver = delivery.rescue, delivery.driver
     rescue.status = RESCUE_STATUS_FOR_DELIVERY[requested]
+    now = utcnow()
     if requested == "ARRIVED_AT_RESTAURANT":
         driver.lat, driver.lng = rescue.lat, rescue.lng
+        driver.location_source, driver.location_updated_at = "status", now
+        _log_leg(db, delivery, 0, delivery.accepted_at, now)
     elif requested == "DELIVERED":
         last = delivery.match.stops[-1].organization
         driver.lat, driver.lng = last.lat, last.lng
-        delivery.delivered_at = utcnow()
+        driver.location_source, driver.location_updated_at = "status", now
+        delivery.delivered_at = now
+        started = _entered(delivery, "DELIVERING")
+        if started and len(delivery.match.stops) == 1:
+            _log_leg(db, delivery, 1, started, now)  # one drop off: the whole DELIVERING span is leg 1
         driver.is_available = True  # the driver's part is done; organizations confirm separately
     db.commit()
     return delivery
@@ -218,7 +267,8 @@ def confirm(db: Session, delivery: Delivery, organization_id: Optional[int]) -> 
                 meals=stop.meals,
                 weight_lbs=round(delivery.weight_lbs * stop.meals / max(delivery.meals, 1), 2),
                 delivery_minutes=round(minutes, 1),
-                is_demo_seed=delivery.is_demo_seed,
+                # demo accounts (fictional partners) never count as real impact
+                is_demo_seed=delivery.is_demo_seed or delivery.rescue.restaurant.is_demo_seed,
             )
         )
     if all(s.confirmed_at is not None for s in delivery.match.stops):
