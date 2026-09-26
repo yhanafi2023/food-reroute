@@ -11,6 +11,7 @@ import threading
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import joblib
+from threadpoolctl import threadpool_limits
 import pandas as pd
 
 from app.intelligence.eta.features import FEATURES, HANDLING_MINUTES_PER_STOP, leg_features
@@ -43,19 +44,44 @@ def retrain(real_trips: List[Dict[str, Any]]) -> Dict[str, Any]:
     global _bundle
     with _lock:
         _bundle = train(model_path(), real_trips=real_trips)
+        _cache.clear()
     return _bundle
 
 
+_cache: Dict[tuple, Dict[str, Any]] = {}
+_CACHE_MAX = 50_000
+
+
+def _key(row: Dict[str, Any]) -> tuple:
+    return tuple(round(row[f], 5) if isinstance(row[f], float) and row[f] == row[f] else row[f] for f in FEATURES)
+
+
 def predict_drive(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Drive minutes only: [{p10, p50, p90, source}] for feature rows."""
+    """Drive minutes only: [{p10, p50, p90, source}] for feature rows. Repeated legs come from a cache."""
     if not rows:
         return []
+    keys = [_key(r) for r in rows]
+    todo = [i for i, k in enumerate(keys) if k not in _cache]
+    if todo:
+        for i, pred in zip(todo, _predict_uncached([rows[i] for i in todo])):
+            if pred["source"] == "ml":
+                if len(_cache) >= _CACHE_MAX:
+                    _cache.clear()
+                _cache[keys[i]] = pred
+            else:
+                return _predict_uncached(rows)
+    return [dict(_cache[k]) for k in keys]
+
+
+def _predict_uncached(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     try:
         b = ensure_eta_model()
         frame = pd.DataFrame(rows, columns=FEATURES)
-        mid = b["p50"].predict(_ridge_frame(frame) if b["p50_name"] == "ridge" else frame)
-        widen = b.get("widen_minutes", 0.0)  # conformal calibration from train.py
-        lo, hi = b["p10"].predict(frame) - widen, b["p90"].predict(frame) + widen
+        # Small batches: one thread avoids OpenMP start-up cost dominating each call.
+        with threadpool_limits(limits=1):
+            mid = b["p50"].predict(_ridge_frame(frame) if b["p50_name"] == "ridge" else frame)
+            widen = b.get("widen_minutes", 0.0)  # conformal calibration from train.py
+            lo, hi = b["p10"].predict(frame) - widen, b["p90"].predict(frame) + widen
     except Exception:
         return [dict.fromkeys(("p10", "p50", "p90"), r["est_road_miles"] / 22.0 * 60) | {"source": "rule"} for r in rows]
     out = []

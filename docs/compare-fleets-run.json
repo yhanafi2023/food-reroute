@@ -1,0 +1,50 @@
+{
+ "scenario": {
+  "seed": 1383,
+  "evening": "Friday 2026-09-25 5 PM to 3 AM (fictional demo network)",
+  "posts_5pm_to_10pm": 8,
+  "posts_10pm_to_1am": 6
+ },
+ "volunteer_only": {
+  "mode": "volunteer_only",
+  "rescues_posted": 14,
+  "meals_posted": 340,
+  "meals_delivered": 90,
+  "meals_expired": 98,
+  "meals_not_delivered_other": 152,
+  "median_minutes_post_to_receipt": 20.0,
+  "late_night_10pm_to_1am": {
+   "posted": 196,
+   "delivered": 0,
+   "expired": 64
+  },
+  "meals_delivered_by_mode": {
+   "volunteer": 90
+  },
+  "no_show_rate_assumption": 0.1
+ },
+ "mixed_fleet": {
+  "mode": "mixed_fleet",
+  "rescues_posted": 14,
+  "meals_posted": 340,
+  "meals_delivered": 120,
+  "meals_expired": 98,
+  "meals_not_delivered_other": 122,
+  "median_minutes_post_to_receipt": 20.5,
+  "late_night_10pm_to_1am": {
+   "posted": 196,
+   "delivered": 30,
+   "expired": 64
+  },
+  "meals_delivered_by_mode": {
+   "volunteer": 90,
+   "waymo_sim": 30
+  },
+  "no_show_rate_assumption": 0.1
+ },
+ "difference": {
+  "meals_delivered": 30,
+  "meals_expired": 0
+ },
+ "label": "SIMULATED: fictional restaurants, orgs and volunteers; simulated vehicles; seeded behavior. Numbers come only from running this simulation."
+}
