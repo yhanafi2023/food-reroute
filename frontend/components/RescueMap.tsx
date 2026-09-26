@@ -2,18 +2,20 @@
 // SSR-safe wrapper: Leaflet touches `window`, so the map loads only in the browser.
 // Builds map points from the current API shapes. Only data the backend already returned to this
 // viewer is drawn (orgs only appear for rescues this role may see). The backend does not expose
-// carrier positions yet, so no carrier markers are drawn from guesses.
+// carrier positions yet, so no carrier markers are drawn from guesses. Route lines become OSRM road
+// routes when they load (a073982).
 import dynamic from "next/dynamic";
 import type { Rescue } from "@/lib/types";
 import { activeTrip } from "./RescueCard";
 import type { MapPoint, MapRoute, RescueMapViewProps } from "./RescueMapView";
 
-const RescueMapView = dynamic(() => import("./RescueMapView"), {
+// Any map (prospects, rescues): the Leaflet view without server rendering.
+export const MapCanvas = dynamic(() => import("./RescueMapView"), {
   ssr: false,
   loading: () => <div className="skeleton" style={{ height: 380 }} role="status" aria-label="Loading map" />,
 });
 
-const ROUTE_NOTE = "Lines connect stops in order; they are not road routes";
+const ROUTE_NOTE = "Straight lines between stops until the road route loads";
 
 export function mapPropsFor(rescues: Rescue[]): RescueMapViewProps {
   const restaurants = new Map<string, MapPoint>();
@@ -52,6 +54,6 @@ export function mapPropsFor(rescues: Rescue[]): RescueMapViewProps {
   return { restaurants: [...restaurants.values()], organizations: [...organizations.values()], routes, routeNote: routes.length ? ROUTE_NOTE : undefined };
 }
 
-export default function RescueMap({ rescues, height = 380 }: { rescues: Rescue[]; height?: number }) {
-  return <RescueMapView {...mapPropsFor(rescues)} height={height} fitKey={rescues.map((r) => r.id).join("|")} />;
+export default function RescueMap({ rescues, height = 380, communityNeed = false }: { rescues: Rescue[]; height?: number; communityNeed?: boolean }) {
+  return <MapCanvas {...mapPropsFor(rescues)} height={height} communityNeed={communityNeed} fitKey={rescues.map((r) => r.id).join("|")} />;
 }

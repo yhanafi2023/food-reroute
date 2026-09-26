@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       { source: "/restaurant/dashboard", destination: "/restaurant", permanent: false },
       { source: "/driver/dashboard", destination: "/volunteer", permanent: false },
       { source: "/organization/dashboard", destination: "/org", permanent: false },
+      { source: "/volunteer/dashboard", destination: "/volunteer", permanent: false },
     ];
   },
 };

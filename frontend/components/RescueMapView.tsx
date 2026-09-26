@@ -5,7 +5,10 @@
 // Tiles: Mapbox dark when NEXT_PUBLIC_MAPBOX_TOKEN is set, otherwise Esri's keyless dark gray canvas.
 import L from "leaflet";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { roadRoute } from "@/lib/osrm";
+import { useCommunityNeedAreas } from "@/lib/useCommunityNeed";
+import type { CensusArea } from "@/lib/types";
 
 export type CarrierState = "AVAILABLE" | "EN_ROUTE" | "ON_DELIVERY" | "OFFLINE";
 
@@ -29,13 +32,21 @@ export interface RescueMapViewProps {
   restaurants?: MapPoint[];
   organizations?: MapPoint[];
   carriers?: MapPoint[];
+  prospects?: MapPoint[];
+  reference?: MapPoint | null;
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
   routes?: MapRoute[];
+  /** Replace straight route lines with OSRM road geometry when it loads (cached per session). */
+  roadRoutes?: boolean;
+  /** Offer the Census community-need layer (a073982) when GET /community-need/areas has data. */
+  communityNeed?: boolean;
   height?: number;
   fitKey?: string;
   routeNote?: string;
 }
 
-const COLORS = { restaurant: "var(--m-restaurant)", org: "var(--m-org)", route: "var(--cyan)", muted: "var(--m-offline)" };
+const COLORS = { restaurant: "var(--m-restaurant)", org: "var(--m-org)", prospect: "var(--m-restaurant)", route: "var(--cyan)", muted: "var(--m-offline)" };
 const CARRIER_COLOR: Record<CarrierState, string> = {
   AVAILABLE: "var(--m-driver)",
   EN_ROUTE: "var(--m-driver-active)",
@@ -135,27 +146,99 @@ function RouteLine({ route }: { route: MapRoute }) {
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
+function Legend({ color, label, ring = false }: { color: string; label: string; ring?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={{ background: color }} />
+      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={ring ? { border: `3px solid ${color}`, background: "var(--panel)" } : { background: color }} />
       {label}
     </span>
   );
 }
 
-export default function RescueMapView({ restaurants = [], organizations = [], carriers = [], routes = [], height = 380, fitKey, routeNote }: RescueMapViewProps) {
+// Road geometry for each route from OSRM, falling back to the straight line (a073982's DeliveryMap).
+function useRoadGeometry(routes: MapRoute[], enabled: boolean): { routes: MapRoute[]; allRoad: boolean } {
+  const [lines, setLines] = useState<Record<string, [number, number][]>>({});
+  const key = routes.map((r) => `${r.id}:${r.geometry.map((p) => p.join(",")).join(";")}`).join("|");
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    routes.forEach((r) =>
+      roadRoute(r.geometry).then((line) => {
+        if (line && !cancelled) setLines((prev) => ({ ...prev, [r.id]: line }));
+      }),
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enabled]);
+  const merged = routes.map((r) => (enabled && lines[r.id] ? { ...r, geometry: lines[r.id] } : r));
+  return { routes: merged, allRoad: enabled && routes.length > 0 && routes.every((r) => !!lines[r.id]) };
+}
+
+// Census-tract community need (a073982): opacity scales with the tract's poverty rate on the app's
+// blue/cyan palette, so it reads as context, not an alarm. Only drawn when the backend serves areas.
+const NEED_FILL = { low: "#1e3a5f", moderate: "var(--accent)", high: "#0891b2", very_high: "var(--cyan)" };
+
+function ringToLatLng(ring: number[][]): [number, number][] {
+  return ring.map(([lng, lat]) => [lat, lng]);
+}
+
+function CommunityNeedLayer({ areas }: { areas: CensusArea[] }) {
+  return (
+    <>
+      {areas.map((a) => {
+        const positions =
+          a.geometry.type === "Polygon"
+            ? (a.geometry.coordinates as number[][][]).map(ringToLatLng)
+            : (a.geometry.coordinates as number[][][][]).map((poly) => poly.map(ringToLatLng));
+        return (
+          <Polygon
+            key={a.geoid}
+            positions={positions}
+            pathOptions={{ color: NEED_FILL[a.bucket], weight: 1, opacity: 0.25, fillColor: NEED_FILL[a.bucket], fillOpacity: 0.06 + a.community_need_score * 0.22 }}
+          >
+            <Tooltip direction="top" sticky>
+              <strong>{a.bucket_label} community need</strong>
+              <div>{a.poverty_rate.toFixed(1)}% below the poverty line (Census tract estimate)</div>
+            </Tooltip>
+          </Polygon>
+        );
+      })}
+    </>
+  );
+}
+
+export default function RescueMapView({
+  restaurants = [],
+  organizations = [],
+  carriers = [],
+  prospects = [],
+  reference = null,
+  selectedId = null,
+  onSelect,
+  routes: straightRoutes = [],
+  roadRoutes = true,
+  communityNeed = false,
+  height = 380,
+  fitKey,
+  routeNote,
+}: RescueMapViewProps) {
+  const { routes, allRoad } = useRoadGeometry(straightRoutes, roadRoutes);
+  const areas = useCommunityNeedAreas(communityNeed);
+  const [showNeed, setShowNeed] = useState(false);
   const allPoints = useMemo<[number, number][]>(
     () => [
       ...restaurants.map((p) => [p.lat, p.lng] as [number, number]),
       ...organizations.map((p) => [p.lat, p.lng] as [number, number]),
       ...carriers.map((p) => [p.lat, p.lng] as [number, number]),
-      ...routes.flatMap((r) => r.geometry),
+      ...prospects.map((p) => [p.lat, p.lng] as [number, number]),
+      ...straightRoutes.flatMap((r) => r.geometry),
     ],
-    [restaurants, organizations, carriers, routes],
+    [restaurants, organizations, carriers, prospects, straightRoutes],
   );
   const light = useLightTheme();
-  const key = fitKey ?? [...restaurants, ...organizations].map((p) => p.id).concat(routes.map((r) => r.id)).join("|");
+  const key = fitKey ?? [...restaurants, ...organizations, ...prospects].map((p) => p.id).concat(straightRoutes.map((r) => r.id)).join("|");
 
   return (
     <div className="map-shell" style={{ height }}>
@@ -176,6 +259,7 @@ export default function RescueMapView({ restaurants = [], organizations = [], ca
           />
         )}
         <FitBounds points={allPoints} fitKey={key} />
+        {showNeed && areas.length > 0 && <CommunityNeedLayer areas={areas} />}
 
         {routes.map((r) => (
           <RouteLine key={r.id} route={r} />
@@ -205,6 +289,27 @@ export default function RescueMapView({ restaurants = [], organizations = [], ca
             </Tooltip>
           </Marker>
         ))}
+        {prospects.map((p) => (
+          <CircleMarker
+            key={p.id}
+            center={[p.lat, p.lng]}
+            radius={p.id === selectedId ? 11 : 8}
+            eventHandlers={onSelect ? { click: () => onSelect(p.id) } : undefined}
+            pathOptions={{ color: COLORS.prospect, weight: p.id === selectedId ? 4 : 3, fillColor: "var(--panel)", fillOpacity: 1 }}
+          >
+            <Tooltip direction="top" offset={[0, -8]}>
+              <strong>{p.label}</strong>
+              {p.detail ? <div>{p.detail}</div> : null}
+            </Tooltip>
+          </CircleMarker>
+        ))}
+        {reference && (
+          <CircleMarker center={[reference.lat, reference.lng]} radius={7} pathOptions={{ color: "var(--ink)", weight: 2, fillColor: "var(--panel)", fillOpacity: 1 }}>
+            <Tooltip direction="top" offset={[0, -8]} permanent>
+              <strong>{reference.label}</strong>
+            </Tooltip>
+          </CircleMarker>
+        )}
         {carriers.map((p) => (
           <GlidingCarrier key={p.id} point={p} />
         ))}
@@ -213,8 +318,28 @@ export default function RescueMapView({ restaurants = [], organizations = [], ca
         {restaurants.length > 0 && <Legend color={COLORS.restaurant} label="Restaurant" />}
         {carriers.length > 0 && <Legend color={CARRIER_COLOR.EN_ROUTE} label="Carrier, live" />}
         {organizations.length > 0 && <Legend color={COLORS.org} label="Organization" />}
-        {routeNote ? <span>{routeNote}</span> : null}
+        {prospects.length > 0 && <Legend color={COLORS.prospect} label="Researched prospect, not a partner" ring />}
+        {straightRoutes.length > 0 ? <span>{allRoad ? "Road route: OSRM (OpenStreetMap), no live traffic" : routeNote}</span> : null}
+        {showNeed && areas.length > 0 && (
+          <>
+            <Legend color={NEED_FILL.low} label="Low" />
+            <Legend color={NEED_FILL.moderate} label="Mod." />
+            <Legend color={NEED_FILL.high} label="High" />
+            <Legend color={NEED_FILL.very_high} label="V. high need (Census poverty rate)" />
+          </>
+        )}
       </div>
+      {areas.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowNeed((v) => !v)}
+          className={`absolute bottom-6 left-2 z-[1000] chip ${showNeed ? "chip-accent" : ""}`}
+          style={{ minHeight: 44 }}
+          aria-pressed={showNeed}
+        >
+          Community need: {showNeed ? "on" : "off"}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CarrierLine, activeTrip } from "@/components/RescueCard";
 import { Shell } from "@/components/Shell";
@@ -144,6 +145,49 @@ function DeliveryCard({ d, now, onChanged }: { d: OrgDelivery; now: string | nul
   );
 }
 
+// "We need N meals tonight" (POST /orgs/me/need), ported from the organization dashboard in a073982.
+function NeedForm() {
+  const [need, setNeed] = useState("25");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ good: boolean; text: string } | null>(null);
+  return (
+    <form
+      className="panel stack"
+      aria-labelledby="need-title"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setNote(null);
+        try {
+          const res = await api<{ current_need: number }>("/orgs/me/need", { method: "POST", body: { meals: Number(need) } });
+          setNote({ good: true, text: `Saved: ${res.current_need} meals needed tonight.` });
+        } catch (err) {
+          setNote({ good: false, text: (err as Error).message });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h2 id="need-title">Tonight&apos;s need</h2>
+      <label className="field">
+        <span>Meals needed tonight</span>
+        <input className="input" type="number" min={0} max={10000} required value={need} onChange={(e) => setNeed(e.target.value)} />
+      </label>
+      {note ? (
+        <p role="status" className={`alert ${note.good ? "alert-good" : "alert-bad"}`}>
+          {note.text}
+        </p>
+      ) : null}
+      <button type="submit" className="btn btn-primary" disabled={busy}>
+        Update need
+      </button>
+      <p className="small muted">
+        New organization? <Link href="/organization/onboarding">Answer the three onboarding questions</Link> before deliveries can be routed to you.
+      </p>
+    </form>
+  );
+}
+
 export default function OrgPage() {
   const user = useWorkspace("org");
   const now = useServerNow();
@@ -168,6 +212,7 @@ export default function OrgPage() {
             ))}
           </section>
           <section className="stack" aria-labelledby="history">
+            <NeedForm />
             <h2 id="history">Received</h2>
             {data.history.length === 0 ? <p className="muted">No confirmed deliveries yet.</p> : null}
             {data.history.slice(0, 10).map((d) => (

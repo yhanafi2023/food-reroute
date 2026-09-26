@@ -25,6 +25,27 @@ What could not be kept from 238b63d:
   carrier reason, not per-term scores.
 - **Road route geometry.** No route endpoint exists yet. Stops are joined with straight lines, and the legend says so.
 
+## Second merge: `main` after the a073982 force-push
+
+After the first merge, `main` was force-pushed to a073982 ("added routing based on census data of poverty and
+improved UI"), built on 1ed89b8. This drops PR #6 (the tax and restaurant-value modules) from `main`. Those commits
+are still on `origin/tax-module` and `shellhacks-demo`. a073982 is a second port of the old pages onto the new API.
+It was merged into `shellhacks-demo` the same way (backup: `backup/shellhacks-demo-pre-merge-2`).
+
+| File | Resolution |
+|---|---|
+| `lib/auth.tsx`, `lib/api.ts`, `app/login/page.tsx`, `app/auth/callback/page.tsx` | Kept shellhacks-demo's version, so sign-in is unchanged. a073982's login put the demo code in client code with one-click demo buttons ("no code needed"). That shortcut was deliberately removed earlier, so it stays out. |
+| `app/signup/page.tsx` | Kept a073982's sign-up as written: `/auth/register-organization` and `/auth/register-volunteer`, then the emailed code. Only the frame (`Shell`) and the post-sign-in route changed. |
+| `app/organization/onboarding/page.tsx` (new in a073982) | Kept. It is the intake Q1 to Q3 form on the real `/orgs/me/intake/*` endpoints, linked from the org workspace nav and the need form. |
+| `app/admin/prospects/page.tsx`, `app/restaurant/surplus-log/page.tsx`, `components/SurplusLog.tsx` | Restored from `main` on the new frame (both call real endpoints). They are linked from the coordinator and restaurant nav. |
+| `app/{admin,restaurant,organization,volunteer}/dashboard/page.tsx` | Kept deleted. They duplicate `/coordinator`, `/restaurant`, `/org` and `/volunteer`, and the old paths redirect there. Their unique features were ported: the org "Tonight's need" form (`POST /orgs/me/need`) and volunteer location sharing (`PATCH /volunteers/me/location`, opt-in, only while on a run). |
+| `components/MapView.tsx`, `DeliveryMap.tsx` | Kept deleted. Ported into `RescueMapView.tsx`: OSRM road routes (`lib/osrm.ts`, now cached so each route is requested from the shared public server once per page session), prospects and the FIU reference point, and the Census community-need layer with its toggle and legend. |
+| `lib/useCommunityNeed.ts`, Census types | Kept. **The backend route `GET /community-need/areas` does not exist on any branch** (`community-need-intelligence` is the same commit as a073982, frontend only). The hook asks once per session and the map offers the layer only when the route returns data. No Census data was added or invented. |
+| `app/impact/page.tsx` | Kept deleted. It calls `GET /impact`, which the current backend does not have. |
+| `components/MatchCard.tsx`, `WhyThisMatch.tsx`, `StatusTimeline.tsx`, `AppShell.tsx` | Kept deleted. a073982's versions expect score fields (`score`, `why`, `rank`) that `GET /rescues/{id}/matching-explanation` does not return. `RescueCard`, `WhyThisAssignment` and `Shell` cover these screens. |
+| `lib/format.ts`, `lib/types.ts`, `.env.example` | shellhacks-demo's version, plus a073982's Census, prospect and surplus-log types. |
+| `lib/geo.ts`, `lib/useShareLocation.ts` | Kept from a073982. |
+
 ## `origin/frontend` (Saito, a357483): not merged
 
 It branches from 5aec836 (before the passwordless API) and edits the old pages, so merging it would bring back the

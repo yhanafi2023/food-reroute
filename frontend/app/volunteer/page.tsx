@@ -9,6 +9,7 @@ import { useWorkspace } from "@/lib/auth";
 import { relative, statusLabel, time } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 import { useServerNow } from "@/lib/useServerNow";
+import { useShareLocation } from "@/lib/useShareLocation";
 import type { Rescue, Stop, Trip, VolunteerTrips } from "@/lib/types";
 
 // One key per intended action and body: a retried tap on bad signal replays instead of applying twice,
@@ -246,6 +247,24 @@ function TripCard({ trip, now, onChanged }: { trip: Trip; now: string | null; on
   );
 }
 
+// Opt-in GPS sharing while on a run (PATCH /volunteers/me/location), ported from a073982.
+// Only admins ever see a volunteer's location; restaurants and organizations never do.
+function ShareLocation({ active }: { active: boolean }) {
+  const [on, setOn] = useState(false);
+  const gps = useShareLocation(on && active);
+  return (
+    <div className="panel panel-tight row" style={{ justifyContent: "space-between" }}>
+      <label className="row" style={{ flexWrap: "nowrap", gap: "var(--s-3)", minHeight: 44 }}>
+        <input type="checkbox" role="switch" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ width: 24, height: 24, flex: "none" }} />
+        <span>Share my location while I am on a run</span>
+      </label>
+      <span className="small muted" role="status">
+        {!on ? "Off" : !active ? "Starts when you accept a run" : gps.state === "sharing" ? "Sharing" : gps.message ?? gps.state}
+      </span>
+    </div>
+  );
+}
+
 export default function VolunteerPage() {
   const user = useWorkspace("volunteer");
   const now = useServerNow();
@@ -260,6 +279,7 @@ export default function VolunteerPage() {
         <div className="grid-2" style={{ alignItems: "start" }}>
           <section className="stack" aria-labelledby="now">
             <h2 id="now">Now</h2>
+            <ShareLocation active={data.active.length > 0} />
             {data.offers.length + data.active.length === 0 ? (
               <Empty title="No rescues for you right now">New offers show up here. Keep this page open.</Empty>
             ) : null}

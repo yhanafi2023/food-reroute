@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 
-export function Loading({ label = "Loading" }: { label?: string }) {
+export function Loading({ label, what, rows = 2 }: { label?: string; what?: string; rows?: number }) {
   return (
     <div role="status" aria-live="polite" className="stack">
-      <span className="sr-only">{label}</span>
-      <div className="skeleton" style={{ height: 88 }} />
-      <div className="skeleton" style={{ height: 88 }} />
+      <span className="sr-only">{label ?? (what ? `Loading ${what}` : "Loading")}</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skeleton" style={{ height: 88 }} />
+      ))}
     </div>
   );
 }
@@ -20,10 +21,15 @@ export function Empty({ title, children }: { title: string; children?: React.Rea
   );
 }
 
-export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void }) {
+// `stale`: the page still shows the last good data, so say so instead of implying it is gone.
+export function ErrorNote({ message, onRetry, stale = false }: { message: string | null | undefined; onRetry?: () => void; stale?: boolean }) {
+  if (!message) return null;
   return (
     <div role="alert" className="alert alert-bad row" style={{ justifyContent: "space-between" }}>
-      <span>{message}</span>
+      <span>
+        {message}
+        {stale ? " Showing the last information FoodFlow had." : ""}
+      </span>
       {onRetry ? (
         <button type="button" className="btn btn-ghost" onClick={onRetry}>
           Try again

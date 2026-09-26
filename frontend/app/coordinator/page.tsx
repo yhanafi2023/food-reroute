@@ -37,7 +37,7 @@ export default function CoordinatorPage() {
       </div>
       {error && !data ? <ErrorNote message={error} onRetry={refresh} /> : null}
       {!data && !error ? <Loading label="Loading rescues" /> : null}
-      {data ? <RescueMap rescues={rows.filter((r) => !FINAL.includes(r.status))} height={420} /> : null}
+      {data ? <RescueMap rescues={rows.filter((r) => !FINAL.includes(r.status))} height={420} communityNeed /> : null}
       {data && rows.length === 0 ? <Empty title="No active rescues">New posts show up here as soon as a restaurant posts.</Empty> : null}
       {rows.length ? (
         <div className="grid-2" style={{ alignItems: "start" }}>

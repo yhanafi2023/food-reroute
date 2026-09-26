@@ -1,11 +1,27 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { DemoState, Workspace } from "@/lib/types";
 import { OfflineBanner } from "./States";
+
+const WORKSPACE_LINKS: Record<Workspace, { href: string; label: string }[]> = {
+  restaurant: [
+    { href: "/restaurant", label: "Tonight" },
+    { href: "/restaurant/surplus-log", label: "Surplus log" },
+  ],
+  volunteer: [{ href: "/volunteer", label: "Runs" }],
+  org: [
+    { href: "/org", label: "Deliveries" },
+    { href: "/organization/onboarding", label: "Onboarding" },
+  ],
+  coordinator: [
+    { href: "/coordinator", label: "Rescues" },
+    { href: "/admin/prospects", label: "Prospects" },
+  ],
+};
 
 const WORKSPACE_NAME: Record<Workspace, string> = {
   restaurant: "Restaurant",
@@ -139,6 +155,7 @@ export function DemoBar() {
 export function Shell({ workspace, children }: { workspace?: Workspace; children: ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   return (
     <>
       <a href="#main" className="skip">
@@ -147,6 +164,15 @@ export function Shell({ workspace, children }: { workspace?: Workspace; children
       <header className="topbar">
         <Brand />
         {workspace ? <span className="chip">{WORKSPACE_NAME[workspace]}</span> : null}
+        {workspace && WORKSPACE_LINKS[workspace].length > 1 ? (
+          <nav aria-label="Workspace" className="row" style={{ gap: "var(--s-1)" }}>
+            {WORKSPACE_LINKS[workspace].map((l) => (
+              <Link key={l.href} href={l.href} className="btn btn-ghost" aria-current={pathname === l.href ? "page" : undefined}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
         <span style={{ flex: 1 }} />
         {user ? <span className="small muted hide-sm">Signed in as {user.name}</span> : null}
         <ThemeToggle />
