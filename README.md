@@ -1,209 +1,109 @@
 # FoodFlow
 
-**Good Food. Greater Impact.** A real time food rescue platform. Restaurants post safe surplus food, FoodFlow
-matches it to the community organizations that need it (food banks, shelters, churches, school pantries), splits
-the donation across them, and routes a volunteer driver before the food expires.
+**Good Food. Greater Impact.** Food rescue logistics for restaurants, receiving organizations (food banks, shelters,
+community fridges, pantries) and the people who carry the food: volunteers, and SIMULATED autonomous vehicles and
+sidewalk robots. Built for ShellHacks 2026 at FIU; demo city Miami-Dade.
 
-> There is food available right now. Who needs it, and how do we get it there before it goes to waste?
+- Practicality for staff, volunteers and coordinators: [docs/PRACTICALITY.md](docs/PRACTICALITY.md)
+- Autonomous delivery (simulated, no Waymo API) and the fleet comparison: [docs/AUTONOMY.md](docs/AUTONOMY.md)
+- Donor benefits (tax estimates, acknowledgments, liability, SB 1383): [docs/DONOR_BENEFITS.md](docs/DONOR_BENEFITS.md)
+- Organization interview template: [docs/ORG_RESEARCH.md](docs/ORG_RESEARCH.md)
+- What is real, simulated or fictional: [DATA_SOURCES.md](DATA_SOURCES.md)
 
-Restaurant → FoodFlow matching → Driver → Community organization → people served. People receiving food never
-need the app or a smartphone; organizations are the bridge.
+> Status: the backend implements the practicality spec. The Next.js frontend in `frontend/` still targets the
+> previous API and needs updating (see [PROGRESS.md](PROGRESS.md)).
 
-Built for ShellHacks 2026 at FIU, focused on Miami-Dade County around FIU. What is verified public data, what is
-simulated or fictional, and what needs a partner integration: [DATA_SOURCES.md](DATA_SOURCES.md).
+## Setup
 
-## Quick start
-
-One command (creates the venv, installs packages, copies env files, runs both servers):
-
-```bash
-./start.sh
-```
-
-Or by hand. Backend (Python 3.10 or newer; on macOS use Homebrew's python3.13, because the Command Line Tools
-Python 3.9 cannot reach OSRM or Mapbox over TLS):
+Backend (Python 3.10+; on macOS use Homebrew's `python3.13`, since the Command Line Tools Python 3.9 cannot reach
+OSRM over TLS):
 
 ```bash
 cd backend
 python3.13 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000     # API docs at http://localhost:8000/docs
+.venv/bin/pytest                               # 108 tests
 ```
 
-Frontend:
+With `DEMO_MODE=true` (default) an empty database is seeded with fictional accounts and a demo history produced by
+the real services (see `backend/app/seed.py` for sign-in details). `python -m app.seed` resets it.
 
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Open http://localhost:3000. API docs: http://localhost:8000/docs.
-
-**Demo logins** (password `demo1234`): restaurant@demo.com (ABC Restaurant), driver@demo.com (Marcus),
-org@demo.com (Community Food Bank), shelter@demo.com (Hope Shelter), admin@demo.com. The 2 minute click path is in
-[DEMO.md](DEMO.md).
-
-## Tests
-
-```bash
-cd backend && .venv/bin/pytest                 # 46 tests: API flow, roles, logistics, allocation, ETA, tracking, prospects
-cd e2e && npm install && npx playwright install chromium
-npm run test:3x                                  # DEMO.md click path + mobile nav, simulation stop/restart, prospects
-```
-
-## Environment variables
-
-Backend (`backend/.env`, see `backend/.env.example`):
+## Environment variables (`backend/.env`)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///backend/foodflow.db` | SQLite locally; a `postgresql://` URL switches to Postgres |
-| `JWT_SECRET` | dev value | Signs login tokens. Set a long random value anywhere public |
-| `JWT_EXPIRE_HOURS` | `24` | Token lifetime |
-| `DEMO_MODE` | `true` | Seed demo data when the database is empty; offline routing unless a Mapbox token is set |
-| `CORS_ORIGINS` | `http://localhost:3000` | Comma separated frontend origins |
-| `ROUTING_PROVIDER` | auto | `mapbox`, `osrm` or `offline`. Auto: mapbox with a token, else osrm; failures fall back to offline |
-| `MAPBOX_ACCESS_TOKEN` | empty | Mapbox Directions API token (server side) |
-| `OSRM_URL` | `https://router.project-osrm.org` | OSRM server |
-| `MEAL_VALUE_USD` | `3.0` | **Assumption** used for the community value estimate. Replace with a sourced figure |
-| `SURPLUS_MODEL_PATH` | `app/intelligence/ml/artifacts/` | Where the (synthetic, not served) surplus prototype is saved |
-| `ETA_MODEL_PATH` | `app/intelligence/ml/artifacts/eta_model.joblib` | Where the ETA model is saved (trained from `data/eta_osrm_miami.csv` on first start) |
+| `DATABASE_URL` | SQLite file | `postgresql://...` for Postgres |
+| `JWT_SECRET` | dev value | Signs sessions; set a long random value anywhere public |
+| `DEMO_MODE` | `true` | Seed fictional demo data; allow the demo sign-in code for demo accounts |
+| `TIMEZONE` | `America/New_York` | Local time for receiving hours and schedules |
+| `CORS_ORIGINS`, `FRONTEND_URL` | localhost:3000 | Allowed origins; magic-link base URL |
+| `RUN_SCHEDULER`, `SCHEDULER_SECONDS` | `true`, `30` | Background checks (no-shows, expiry, vehicles, reports) |
+| `ROUTING_SERVICE_URL` | empty | Teammate routing service (`POST /eta`); empty uses the in-process ETA model |
+| `ALLOCATION_SERVICE_URL` | empty | Teammate allocation service (`POST /allocate`); empty uses the in-process allocator |
+| `SERVICE_TIMEOUT_SECONDS` | `3` | Before falling back (results flagged `estimated: true`) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | empty | Email notifications (console otherwise) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | empty | Optional SMS |
+| `LOAD_WINDOW_MIN`, `NO_SHOW_GRACE_MIN`, `AV_CAPACITY_MEALS`, ... | see `app/assumptions.py` | Assumptions, served at `GET /config/assumptions` |
+| `MAPBOX_ACCESS_TOKEN`, `ROUTING_PROVIDER`, `OSRM_URL` | | Map routes (`app/logistics/routing.py`) |
 
-Frontend (`frontend/.env.local`, see `frontend/.env.example`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USE_MOCKS`
-(run the UI with no backend), `NEXT_PUBLIC_MAPBOX_TOKEN` (public `pk.` token for map tiles; OpenStreetMap
-otherwise), `NEXT_PUBLIC_SITE_URL` (for the QR page).
+## Try it with curl
 
-## API
+```bash
+API=http://localhost:8000
+# sign in (the code arrives by the console/email provider; demo accounts may use the demo code in app/seed.py)
+curl -s -X POST $API/auth/request-code -H 'content-type: application/json' -d '{"email":"staff@casa-demo.example.com"}'
+TOKEN=$(curl -s -X POST $API/auth/verify -H 'content-type: application/json' \
+  -d '{"email":"staff@casa-demo.example.com","code":"<code>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 
-JSON, snake_case, `Authorization: Bearer <token>`. Roles: RESTAURANT, DRIVER, ORGANIZATION, ADMIN. Every endpoint
-checks role and ownership (a driver can only update their own delivery; an organization can only confirm its own stop).
+# quick post: quantity + unit + category + deadline + attestation
+curl -s -X POST $API/rescues -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -H 'Idempotency-Key: post-001' \
+  -d '{"quantity":2,"unit":"tray","category":"hot","attested":true,"pickup_deadline":"2026-09-27T03:00:00Z"}'
 
-| Endpoint | Who | What |
-|---|---|---|
-| `POST /auth/signup` | anyone | Create a restaurant, driver or organization account → `{token, user}` |
-| `POST /auth/login` | anyone | → `{token, user}` |
-| `GET /auth/me` | logged in | Current user |
-| `POST /rescues` | restaurant | Create a rescue and run matching → `{rescue, match}` |
-| `GET /rescues/available` | logged in | Open and matched rescues, soonest deadline first |
-| `GET /rescues/{id}` | logged in | Rescue with its match and delivery |
-| `POST /rescues/{id}/accept` | driver | Accept your offer → Delivery with a stored route |
-| `POST /rescues/{id}/decline` | driver | Decline; rematches excluding you |
-| `PATCH /deliveries/{id}/status` | driver, admin | Advance one step; 400 on illegal jumps |
-| `POST /deliveries/{id}/confirm` | organization, admin | Confirm your drop off; updates needs and impact |
-| `POST /organizations/needs` | organization | Post a need |
-| `GET /organizations/needs` | logged in | Your needs (organizations) or open needs (others) |
-| `GET /restaurants/dashboard` | restaurant | Stats and rescues |
-| `GET /drivers/dashboard` | driver | Offer, active delivery, history |
-| `GET /organizations/dashboard` | organization | Needs, incoming and received deliveries |
-| `GET /admin/network` | admin | Every marker, active route, stats and impact |
-| `PATCH /drivers/me/availability` | driver | Go online or offline (hands a pending offer to the next driver) |
-| `GET /drivers/nearby?lat=&lng=&radius_miles=` | restaurant, org, admin | Available drivers by distance |
-| `GET /impact` | public | Impact totals from real confirmed deliveries (`?include_demo=true` adds demo data) |
-| `GET /deliveries/{id}/tracking` | driver, restaurant, orgs on the route, admin | Driver position (GPS or estimated) and ML ETA to your location |
-| `PATCH /drivers/me/location` | driver | Share live GPS |
-| `GET /ml/eta`, `POST /ml/eta/retrain` | admin | ETA model metrics; retrain with logged real trips |
-| `GET /prospects`, `/prospects/meta`, `/prospects/{id}` | admin | Researched Miami prospects (filters: q, neighborhood, business_type, evidence, max_miles) |
-| `GET /prospects/opportunities` | admin | Ranked opportunities (measured surplus only) |
-| `PUT /prospects/{id}/surplus-log`, `PUT /restaurants/me/surplus-log` | admin, restaurant | Seven-day surplus log |
-| `POST /matching/run` | admin | Batch match all open rescues |
-| `POST /simulation/run` | admin | Timed events for Simulate Tonight |
-| `POST /ml/predict` | admin, restaurant | Surplus probability for one set of features |
-| `GET /ml/forecast` | admin | Not available until real surplus history exists (the prototype is synthetic) |
-| `GET /ml/info` | public | Model name, ROC AUC, synthetic data note |
-| `POST /demo/reset` | admin | Restore the demo seed (about 40 ms) |
+# why each organization could or could not take it
+curl -s $API/rescues/1/matching-explanation -H "Authorization: Bearer $TOKEN"
+```
 
-Status flow. Rescue: OPEN → MATCHED → ACCEPTED → PICKED_UP → DELIVERED → CONFIRMED (or EXPIRED, CANCELLED).
-Delivery: HEADING_TO_RESTAURANT → ARRIVED_AT_RESTAURANT → PICKED_UP → DELIVERING → DELIVERED → CONFIRMED.
-The driver is freed at DELIVERED; the delivery becomes CONFIRMED when every receiving organization has confirmed.
+## Run the demo scenarios
 
-## Database
+- `python -m app.seed` rebuilds the fictional seed and replays five scenarios on the previous evening: a completed
+  rescue with a full audit trail, a volunteer no-show that re-queued, a partial acceptance, a late-night simulated AV
+  delivery, and a missed AV load window with a volunteer fallback. Open `GET /rescues/{id}/audit` as a restaurant.
+- `GET /analytics/compare-fleets` (admin) runs the seeded volunteer-only vs mixed-fleet evening; the committed
+  output is `docs/compare-fleets-run.json`.
+- `python -m scripts.walkthroughs` re-measures the persona walkthroughs in `docs/PRACTICALITY.md`.
 
-Tables: `users`, `restaurants`, `drivers`, `organizations`, `food_needs`, `food_rescues`, `matches`,
-`match_stops`, `deliveries`, `impact_events`, with foreign keys and CHECK constraints on every status and
-quantity. SQLAlchemy models: `backend/app/models.py`. Production schema with PostGIS:
-`backend/db/schema_postgres.sql`.
+## API overview
 
-| Index | Why |
+| Area | Endpoints |
 |---|---|
-| `drivers (is_available, lat, lng)` | Matching reads only available drivers near a pickup. Postgres: partial GIST index on `location WHERE is_available` |
-| `food_needs (status, deadline)` | Matching and dashboards read open needs, soonest deadline first |
-| `food_rescues (status, pickup_deadline)` | Batch matching and the expiry sweep read open rescues by deadline |
-| `deliveries (driver_id, status)` | A driver's active delivery and history |
-| `match_stops (organization_id, confirmed_at)` | Deliveries by organization: incoming vs received |
-| `matches (driver_id, status)` | A driver's pending offer |
+| Sign-in and members | `POST /auth/request-code`, `POST /auth/verify`, `GET /auth/me`, `POST /auth/register-organization`, `POST /auth/register-volunteer`, `GET/POST /orgs/me/members`, `DELETE /orgs/me/members/{id}` |
+| Onboarding | `PUT /orgs/me/intake/{Q1,Q2,Q3}`, `POST /orgs/me/intake/confirm`, `GET /orgs/me/profile`, `GET /orgs/{id}/profile-completeness`, `POST /orgs/me/need`, `POST /admin/orgs/{id}/verify-ein`, `GET/PUT /restaurants/me/profile`, `GET/PUT /volunteers/me/profile` |
+| Posting | `POST /rescues`, `POST /rescues/repeat-last`, `GET/POST /restaurants/me/templates`, `POST /rescues/from-template/{id}`, `POST /restaurants/me/schedules`, `POST /rescues/{id}/confirm`, `PATCH /rescues/{id}`, `POST /rescues/{id}/cancel` |
+| Matching | `GET /rescues/{id}/matching-explanation`, `GET /fleet/availability` |
+| Handoffs | `GET /volunteers/me/trips`, `POST /trips/{id}/accept`, `/decline`, `/cancel`, `/pickup`, `POST /stops/{id}/deliver`, `/report-closed`, `GET /orgs/me/deliveries`, `GET /stops/{id}/receipt-form`, `POST /stops/{id}/receipt`, `/refuse`, `/meals-served`, `POST /trips/{id}/curb/unlock`, `/curb/loaded`, `/curb/unloaded`, `PATCH /volunteers/me/location` |
+| Records | `GET /rescues/{id}/audit`, `GET /reports/donor-tax-summary`, `GET /acknowledgments`, `GET /acknowledgments/{id}`, `POST /acknowledgments/{id}/sign`, `POST /restaurants/me/agreements`, `GET /reports/sb1383`, `GET /restaurants/me/benefits`, `POST /restaurants/me/totes/returned`, `GET /public/partners/{slug}`, `GET/POST /orgs/me/reports`, `GET /orgs/me/reports/{id}/download`, `GET /orgs/me/incomplete-deliveries`, `GET /volunteers/me/hours` |
+| Notifications | `GET/PUT /me/notification-preferences`, `GET /me/notifications` |
+| Analytics and admin | `GET /analytics/coverage`, `/compare-fleets`, `/matching-rejections`, `POST /admin/jobs/run`, `GET /config/assumptions` |
+| Prospects (research, not partners) | `GET /prospects`, `/prospects/meta`, `/prospects/opportunities`, `/prospects/{id}`, `PUT /prospects/{id}/surplus-log`, `GET/PUT /restaurants/me/surplus-log` |
 
-## How matching works (logistics, `backend/app/logistics/`)
-
-Pure Python, no web framework imports.
-
-**find_best_match(rescue, drivers, needs, exclude_driver_ids)**
-
-1. Prefilter the 5 nearest available drivers with enough capacity and the 5 nearest open needs with
-   `heapq.nsmallest`: O(D log k + N log k).
-2. Build drop off plans with `intelligence.allocate` (the priority based split) plus a nearest-first split and a
-   single stop run, kept only if they place every meal on real need. Stops are ordered by nearest neighbor.
-3. Score every driver × plan (lower is better) and drop any driver who cannot reach the restaurant before the deadline:
-
-```
-score = pickup_mi + route_mi + 0.1 × eta_min × (1 + urgency) − 3 × demand_fit − 2 × priority_bonus
-urgency        = clamp(1 − minutes_to_deadline / 180, 0, 1)
-demand_fit     = meals placed on real need / meals available
-priority_bonus = meal weighted HIGH 1, MEDIUM 0.5, LOW 0
-```
-
-4. Return the best Match with 3 to 4 plain English reasons and the top 3 candidates with their score breakdown
-   (which sums to the score) for the "Why this match?" panel.
-
-**Why greedy with a top k prefilter.** Food rescue is online: a rescue appears and needs an answer in seconds. Only
-nearby drivers are realistic, so looking at k = 5 of them loses almost nothing and makes the cost independent of
-fleet size after the prefilter. Scoring is O(k × plans) = constant. Space is O(k).
-
-**Scaling.** Today the prefilter scans all D drivers and N needs in Python: O(D log k + N log k) time, O(D + N)
-memory for the loaded rows. With PostGIS, `ORDER BY location <-> point LIMIT 5` on a GIST index is a KNN index
-search, about O(log n + k), so the database returns only the 5 candidates and the rest of the algorithm is unchanged.
-
-**run_batch** processes open rescues earliest deadline first with a min heap and greedily assigns drivers, tracking
-filled needs as it goes: O(R log R + R × (D log k + N log k)). Greedy is fast but not globally optimal (an early
-rescue can take a driver a later one needed more). The upgrade path is the Hungarian algorithm
-(`scipy.optimize.linear_sum_assignment`) on an R × D score matrix, O(n³).
-
-**get_route** calls the Mapbox Directions API (or OSRM) with a 3 second timeout and GeoJSON geometry, converts to
-`[[lat, lng]]`, adds 6 minutes of handling per stop, and caches in memory. Any failure, or `ROUTING_PROVIDER=offline`,
-returns the offline estimate: straight line × 1.3 at 22 mph plus 6 minutes per stop, `source: "offline"`.
-
-**next_status** enforces the delivery order: only the single next step is legal.
-
-## Allocation, forecast and impact (intelligence, `backend/app/intelligence/`)
-
-Splitting a rescue across organizations (greedy by priority, deadline, distance; at most 3 stops), the surplus
-forecast prototype trained on **synthetic** data (LogisticRegression vs GradientBoosting, time based split, best
-ROC AUC kept), and impact metrics. Details, feature choices and complexity:
-[backend/app/intelligence/README.md](backend/app/intelligence/README.md).
+All state-changing endpoints accept an `Idempotency-Key` header. Illegal state changes return 409.
 
 ## Driver ETA and live tracking
 
-Matching, simulation and tracking use an ETA model trained on 27,172 real OSRM road-network travel times in
+Matching, the simulated fleets and the fleet comparison use an ETA model trained on 27,172 real OSRM road-network travel times in
 Miami-Dade: gradient boosting for the P50 (2.8 min average error on held-out places vs 10.0 for the old 22 mph
 rule) and conformal-calibrated quantile models for a P10 to P90 range, plus an assumed 6 minutes per handling stop.
-Dashboards poll `/deliveries/{id}/tracking` every 3 seconds: the driver's live GPS when shared, otherwise a position
-estimated along the real route leg, and the ETA to the viewer's own location. Details: [DATA_SOURCES.md](DATA_SOURCES.md).
+Volunteers can share live location (`PATCH /volunteers/me/location`). Details: [DATA_SOURCES.md](DATA_SOURCES.md).
 
 ## Miami prospect directory
 
-`/admin/prospects` lists 14 researched businesses near FIU with sources, dates checked, contact details, evidence
+The prospect API lists 14 researched businesses near FIU with sources, dates checked, contact details, evidence
 level and "unknown" wherever data is missing. They are not partners. Businesses are ranked only after a measured
-quantity exists; the seven-day surplus log (also at `/restaurant/surplus-log` for enrolled restaurants) produces one.
-
-## Simulate Tonight
-
-`POST /simulation/run` replays 6 PM to 10 PM in 60 seconds over the demo network using the real matching,
-allocation and routing code with a fixed random seed, so it is identical every run. It never touches the database.
-The admin map plays the events with `requestAnimationFrame`: rescues appear, drivers move along their routes,
-meals split across organizations, counters count up. Labeled as simulated data.
+quantity exists; the seven-day surplus log (also `PUT /restaurants/me/surplus-log` for enrolled restaurants) produces one.
 
 ## Deploy
 
