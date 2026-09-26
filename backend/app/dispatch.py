@@ -86,10 +86,12 @@ def _restaurant_staffed(rescue: Rescue, at: datetime) -> bool:
 
 
 def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> Dict[str, Any]:
-    now = clock.now()
+    real_now = clock.now()
+    # plan from the restaurant's chosen earliest pickup (e.g. closing), never mid-service
+    now = max(real_now, rescue.pickup_not_before) if rescue.pickup_not_before else real_now
     if rescue.status != "posted" or rescue.is_draft:
         return {"matched": False, "reason": f"rescue is {rescue.status}"}
-    if now >= rescue.safe_until or now >= rescue.pickup_deadline:
+    if real_now >= rescue.safe_until or real_now >= rescue.pickup_deadline or now >= rescue.pickup_deadline:
         return {"matched": False, "reason": "past the pickup deadline or safe-until time"}
     attempt = _next_attempt(db, rescue.id)
     r_pt = (rescue.restaurant.lat, rescue.restaurant.lng)
@@ -298,6 +300,9 @@ def create_trip(db: Session, rescue: Rescue, plan: TripPlan, estimated: bool, vo
         prof = rescue.restaurant.restaurant_profile
         prof.totes_on_hand -= plan.totes
         prof.totes_out += plan.totes
+        from app.models import ToteLedger
+        db.add(ToteLedger(organization_id=rescue.restaurant_org_id, change=-plan.totes, reason="sent_with_trip",
+                          trip_id=trip.id, at=now))
     staff = _org_users(db, rescue.restaurant_org_id)
     if plan.mode == "volunteer":
         notify.send(db, [plan.volunteer], "offer", "New food rescue for you",

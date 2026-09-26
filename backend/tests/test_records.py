@@ -63,7 +63,7 @@ def test_dashboard_never_assumes_disposal_cost_and_public_page_is_opt_in(client)
     body = {k: prof[k] for k in ("closing_times", "staffed_until", "totes_on_hand")} | {"hauling_cost_per_lb": 0.1, "public_partner_page": True}
     slug = client.put("/restaurants/me/profile", json=body, headers=mgr).json()["public_slug"]
     assert client.get("/restaurants/me/benefits", headers=mgr).json()["avoided_disposal_cost"] == 4.8
-    assert client.get(f"/public/partners/{slug}").json()["meals_donated"] == 40
+    assert client.get(f"/public/partners/{slug}").json()["meals_donated_to_date"] == 40
     client.put("/restaurants/me/profile", json={**body, "public_partner_page": False}, headers=mgr)
     assert client.get(f"/public/partners/{slug}").status_code == 404
 

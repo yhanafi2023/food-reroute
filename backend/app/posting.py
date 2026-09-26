@@ -37,9 +37,12 @@ class QuickPost(BaseModel):
     pickup_instructions: Optional[str] = Field(default=None, max_length=1000)
     safe_until: Optional[datetime] = None
     menu_item_id: Optional[int] = Field(default=None, description="Pick a menu item to fill in value and cost")
+    pickup_not_before: Optional[datetime] = Field(default=None, description="Earliest pickup the restaurant wants (e.g. closing)")
+    form_opened_at: Optional[datetime] = Field(default=None, description="When staff opened the post form (for timing)")
     items: Optional[List["ItemIn"]] = Field(default=None, description="Several items in one post (optional)")
 
-    _utc = field_validator("pickup_deadline", "prepared_at", "safe_until")(lambda v: to_naive_utc(v) if v else v)
+    _utc = field_validator("pickup_deadline", "prepared_at", "safe_until", "pickup_not_before", "form_opened_at")(
+        lambda v: to_naive_utc(v) if v else v)
 
 
 class ItemIn(BaseModel):
@@ -86,6 +89,7 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
         raise HTTPException(422, "The pickup deadline must be in the future")
     deadline = min(body.pickup_deadline, safe_until)
     d = _defaults(user)
+    not_before, timing_warning = pickup_window(user, body, now, deadline, safe_until)
     rescue = Rescue(
         restaurant_org_id=user.organization_id, posted_by=user.id, status="posted", quantity=body.quantity, unit=body.unit,
         meals_per_unit=UNIT_TO_MEALS[body.unit], est_meals=est_meals(body.quantity, body.unit), category=body.category,
@@ -94,9 +98,11 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
         attested_by=None if draft else user.id, attested_at=None if draft else now, safe_until=safe_until,
         pickup_deadline=deadline, pickup_instructions=body.pickup_instructions if body.pickup_instructions is not None else d["pickup_instructions"],
         pickup_code=lifecycle.code(), is_draft=draft, schedule_id=schedule_id,
-        is_fictional=user.organization.is_fictional, created_at=now, updated_at=now,
+        is_fictional=user.organization.is_fictional, created_at=now, updated_at=now, pickup_not_before=not_before,
+        post_duration_seconds=(round((now - body.form_opened_at).total_seconds(), 1)
+                               if body.form_opened_at and 0 <= (now - body.form_opened_at).total_seconds() <= 3600 else None),
     )
-    warnings = []
+    warnings = [timing_warning] if timing_warning else []
     dup = find_duplicate(db, user.organization_id, body)
     if dup is not None:
         rescue.duplicate_of = dup.id
@@ -121,6 +127,26 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
     if dup is not None:
         notify.send(db, [user], "duplicate_warning", "Possible double post", warnings[0], dedupe=f"dup:{rescue.id}")
     return {"rescue": rescue, "warnings": warnings}
+
+
+SAFETY_MARGIN_MIN = 30
+
+
+def pickup_window(user: User, body: QuickPost, now: datetime, deadline: datetime, safe_until: datetime):
+    """Earliest pickup: what the restaurant asked for, or its closing time when 'pickups after closing' is on.
+    Food safety wins: never wait past safe_until minus a margin."""
+    want = body.pickup_not_before
+    prof = user.organization.restaurant_profile
+    if want is None and prof and prof.pickups_after_closing:
+        from app.value.nudges import closing_today_utc
+        want = closing_today_utc(prof, now)
+    if want is None or want <= now:
+        return None, None
+    latest_safe = min(deadline, safe_until - timedelta(minutes=SAFETY_MARGIN_MIN))
+    if want > latest_safe:
+        return None, (f"Pickup was not delayed to {clock.fmt_local(want)}: the food would not stay safe that long, so it can be "
+                      "picked up sooner")
+    return want, None
 
 
 def find_duplicate(db: Session, org_id: int, body: QuickPost) -> Optional[Rescue]:

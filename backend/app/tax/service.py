@@ -115,8 +115,10 @@ def _ack_status(db: Session, stop: TripStop) -> str:
 
 
 def lines_for_year(db: Session, restaurant_id: int, year: int) -> List[Dict[str, Any]]:
-    start = clock.local_to_utc(datetime(year, 1, 1))
-    end = clock.local_to_utc(datetime(year + 1, 1, 1))
+    return lines_between(db, restaurant_id, clock.local_to_utc(datetime(year, 1, 1)), clock.local_to_utc(datetime(year + 1, 1, 1)))
+
+
+def lines_between(db: Session, restaurant_id: int, start: datetime, end: datetime) -> List[Dict[str, Any]]:
     profile = tax_profile(db, restaurant_id)
     stops = (db.query(TripStop).join(Trip, Trip.id == TripStop.trip_id).join(Rescue, Rescue.id == Trip.rescue_id)
              .filter(Rescue.restaurant_org_id == restaurant_id, TripStop.status == "received", TripStop.received_meals > 0,
@@ -155,9 +157,9 @@ def lines_for_year(db: Session, restaurant_id: int, year: int) -> List[Dict[str,
     return out
 
 
-def summary(db: Session, restaurant_id: int, year: int) -> Dict[str, Any]:
+def summary(db: Session, restaurant_id: int, year: int, lines: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     profile = tax_profile(db, restaurant_id)
-    lines = lines_for_year(db, restaurant_id, year)
+    lines = lines_for_year(db, restaurant_id, year) if lines is None else lines
     included = [l for l in lines if l["included"]]
     total_ded = sum((Decimal(str(l["enhanced_deduction"])) for l in included), Decimal(0))
     extras = [Decimal(str(l["extra_benefit_vs_discarding"])) for l in included if l["extra_benefit_vs_discarding"] is not None]

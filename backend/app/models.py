@@ -116,7 +116,16 @@ class RestaurantProfile(Base):
     totes_out: Mapped[int] = mapped_column(Integer, default=0)
     pickup_instructions: Mapped[str] = mapped_column(Text, default="")
     hauling_cost_per_lb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # only if the restaurant enters it
+    hauling_cost_per_pickup: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    container_size_yd3: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hauling_pickups_per_week: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     public_partner_page: Mapped[bool] = mapped_column(Boolean, default=False)
+    timezone: Mapped[str] = mapped_column(String(40), default="")  # empty: the platform TIMEZONE
+    nudges_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    nudge_minutes_before: Mapped[int] = mapped_column(Integer, default=30)
+    pickups_after_closing: Mapped[bool] = mapped_column(Boolean, default=False)  # the restaurant turns this on
+    social_card_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_social_cards: Mapped[list] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     organization: Mapped[Organization] = relationship(back_populates="restaurant_profile")
@@ -169,6 +178,7 @@ class ReceiverProfile(Base):
     not_private_nonoperating_foundation: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     verification_source: Mapped[str] = mapped_column(String(300), default="")
     ack_frequency: Mapped[str] = mapped_column(String(14), default="per_delivery")  # per_delivery | monthly
+    public_naming_consent: Mapped[bool] = mapped_column(Boolean, default=False)  # may donors name us publicly?
     ein_verified_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ein_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -293,6 +303,8 @@ class Rescue(Base):
     allowed_modes: Mapped[list] = mapped_column(JSON, default=lambda: list(MODES))
     excluded_volunteer_ids: Mapped[list] = mapped_column(JSON, default=list)
     requeue_count: Mapped[int] = mapped_column(Integer, default=0)
+    pickup_not_before: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # the restaurant's closing time
+    post_duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # form opened to submitted
     is_fictional: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -520,6 +532,7 @@ class MenuItem(Base):
     meals_per_unit: Mapped[float] = mapped_column(Float)
     category: Mapped[str] = mapped_column(String(14), default="hot")
     allergens: Mapped[list] = mapped_column(JSON, default=list)
+    typical_batch_size: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # optional, units per batch
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -676,3 +689,33 @@ class TripLeg(Base):
     predicted_p50: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     features: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PrepChange(Base):
+    """The restaurant marked an over-prep suggestion as 'tried it'."""
+
+    __tablename__ = "prep_changes"
+    __table_args__ = (CheckConstraint("weekday IS NULL OR weekday BETWEEN 0 AND 6", name="ck_prep_weekday"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    menu_item_id: Mapped[int] = mapped_column(ForeignKey("menu_items.id", ondelete="CASCADE"))
+    weekday: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tried_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    note: Mapped[str] = mapped_column(String(300), default="")
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ToteLedger(Base):
+    """Reusable tote program: totes FoodFlow lends a restaurant, totes sent out on trips, and returns."""
+
+    __tablename__ = "tote_ledger"
+    __table_args__ = (CheckConstraint("reason IN ('lent', 'sent_with_trip', 'returned', 'retired')", name="ck_tote_reason"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    change: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(16))
+    trip_id: Mapped[Optional[int]] = mapped_column(ForeignKey("trips.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

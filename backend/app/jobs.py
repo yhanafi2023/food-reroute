@@ -160,6 +160,9 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
             if dispatch.run_matching(db, rescue).get("matched"):
                 counts["rematched"] += 1
 
+    from app.value import nudges
+    counts["nudges"] = len(nudges.send_due(db))
+    counts["insight_cards"], counts["value_reports"] = _weekly_insights(db), _monthly_value_reports(db)
     from app.tax import acks
     counts["acknowledgments"] = acks.monthly_due(db)
     counts["ack_reminders"] = acks.send_reminders(db)
@@ -168,6 +171,49 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
         counts["reports"] = report_builder.generate_due_reports(db)
     db.commit()
     return counts
+
+
+def _managers(db: Session, org_id: int) -> List[User]:
+    return db.query(User).filter_by(organization_id=org_id, role="restaurant_manager", active=True).all()
+
+
+def _weekly_insights(db: Session) -> int:
+    """Monday morning: the week's top over-prep insight card, from the restaurant's own history."""
+    from app.value import insights
+    from app.value.common import local
+
+    n = 0
+    for org in db.query(Organization).filter_by(kind="restaurant").all():
+        t = local(clock.now(), org.restaurant_profile)
+        if t.weekday() != 0 or t.hour < 8:
+            continue
+        cards = insights.weekday_patterns(db, org.id, today=t.date())
+        if cards and notify.send(db, _managers(db, org.id), "insight", "This week's prep insight",
+                                 f"{cards[0]['text']} ({insights.CAVEAT})", dedupe=f"insight:{org.id}:{t.date().isoformat()}"):
+            n += 1
+    return n
+
+
+def _monthly_value_reports(db: Session) -> int:
+    """On the 1st: last month's 'What you got back' summary to managers (PDF at /restaurants/me/value-report)."""
+    from app.value import report
+    from app.value.common import local
+
+    n = 0
+    for org in db.query(Organization).filter_by(kind="restaurant").all():
+        t = local(clock.now(), org.restaurant_profile)
+        if t.day != 1 or t.hour < 8:
+            continue
+        prev = (t.date().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        r = report.build(db, org.id, prev)
+        tot = r["estimated_total_value_this_month"]
+        body = (f"{prev}: {r['lines']['community_impact']['meals_donated']} meals donated; estimated total value "
+                f"${tot['display']:,} from {', '.join(tot['includes']) or 'no dollar lines yet (add your info)'}. "
+                f"PDF: /restaurants/me/value-report?month={prev}&format=pdf")
+        if notify.send(db, _managers(db, org.id), "value_report", "What you got back last month", body,
+                       dedupe=f"value-report:{org.id}:{prev}"):
+            n += 1
+    return n
 
 
 def run_jobs_now() -> Dict[str, int]:

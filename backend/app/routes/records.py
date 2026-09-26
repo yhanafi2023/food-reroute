@@ -81,6 +81,8 @@ def totes_returned(count: int = Body(..., embed=True, ge=1, le=500), user: User 
         raise HTTPException(422, f"Only {p.totes_out} totes are out")
     p.totes_out -= count
     p.totes_on_hand += count
+    from app.models import ToteLedger
+    db.add(ToteLedger(organization_id=user.organization_id, change=count, reason="returned", actor_user_id=user.id, at=clock.now()))
     audit.log(db, "totes_returned", entity="organization", actor=user, details={"count": count})
     db.commit()
     return {"totes_on_hand": p.totes_on_hand, "totes_out": p.totes_out}
@@ -88,13 +90,12 @@ def totes_returned(count: int = Body(..., embed=True, ge=1, le=500), user: User 
 
 @router.get("/public/partners/{slug}")
 def public_partner(slug: str, db: Session = Depends(get_db)):
+    """Opt-in only. Receiving orgs are named only with their consent; people served never appear."""
     org = db.query(Organization).filter_by(public_slug=slug).one_or_none()
     if org is None or not (org.restaurant_profile and org.restaurant_profile.public_partner_page):
         raise HTTPException(404, "Partner page not found")
-    from app.tax.service import dashboard
-    d = dashboard(db, org.id, clock.to_local(clock.now()).year)
-    return {"name": org.name, "badge": "Food Rescue Partner", "year": d["year"], "meals_donated": d["meals_donated"],
-            "pounds_diverted": d["pounds_diverted"], "pounds_method": d["pounds_method"], "is_fictional": org.is_fictional}
+    from app.value.marketing import partner_page
+    return partner_page(db, org)
 
 
 # ---------- 10 receiving org records ----------

@@ -77,11 +77,12 @@ class MenuItemIn(BaseModel):
     meals_per_unit: float = Field(gt=0, le=1000)
     category: Literal["hot", "cold", "frozen", "shelf_stable"] = "hot"
     allergens: List[str] = []
+    typical_batch_size: Optional[float] = Field(default=None, gt=0, le=10000)
 
 
 def menu_json(m: MenuItem) -> dict:
     return {k: getattr(m, k) for k in ("id", "name", "unit", "menu_price_per_unit", "food_cost_pct", "actual_cost_per_unit",
-                                        "meals_per_unit", "category", "allergens", "active")}
+                                        "meals_per_unit", "category", "allergens", "typical_batch_size", "active")}
 
 
 def _own_menu(db: Session, item_id: int, user: User) -> MenuItem:
