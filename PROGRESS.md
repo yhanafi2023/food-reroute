@@ -1,32 +1,39 @@
 # FoodFlow progress
 
-## Dev 4: AI and optimization (`backend/app/intelligence/`)
+Last updated 2026-09-26.
 
-**Done (branch `dev4-intelligence`)**
-- `allocate(meals, candidate_needs)`: greedy split by priority, deadline, distance; max 3 stops; leftover to best need.
-- `demand_fit(meals, allocations, candidate_needs)`: helper for the logistics score.
-- Synthetic data generator, training (time split, LR vs GradientBoosting, best by ROC AUC, joblib), `predict_surplus`, `forecast_tonight`, `model_info`, `ensure_model` (trains when the model file is missing).
-- `compute_impact(db)` over `impact_events`.
-- `backend/tests/test_intelligence.py`: 13 tests, all green.
-- Section README: `backend/app/intelligence/README.md`.
+## Done
 
-**Next:** fold the intelligence README into the root README in phase 7. Help Dev 3 wire `allocate` into matching.
+- **Dev 4, intelligence**: allocation (split delivery), synthetic data + LR vs GradientBoosting forecast,
+  `predict_surplus`, `forecast_tonight`, `model_info`, impact. Merged in PR #1.
+- **Dev 3, logistics**: `find_best_match` (top-k prefilter, contract score, deadline rejection, reasons, top 3
+  candidates), `run_batch` (earliest deadline first), `get_route` (Mapbox Directions → OSRM → offline fallback,
+  cached), `next_status`.
+- **Dev 2, backend**: FastAPI, SQLAlchemy models with CHECK constraints and indexes, Postgres/PostGIS schema, JWT
+  auth with role + ownership checks, every contract endpoint, demo seed, `/demo/reset` (~40 ms), deterministic
+  Simulate Tonight.
+- **Dev 1, frontend**: Next.js app in `frontend/`, typed API client + mocks, every page in the spec, map with
+  numbered stops and moving drivers, "Why this match?" panel, Simulate Tonight playback. `npm run build` and
+  `eslint` clean.
+- **Shared**: 34 backend tests green; Playwright demo test passes 3 times in a row; `start.sh`; DEMO.md,
+  README.md, PITCH.md, DEVPOST.md; `render.yaml`.
 
-### Notes for teammates
+## In progress
 
-**Dev 2 (backend):**
-- Add to `backend/requirements.txt`: `pandas`, `numpy`, `scikit-learn`, `joblib` (plus your `sqlalchemy`, `pytest`).
-- `impact_events` needs these columns (compute_impact reads them with plain SQL): `delivery_id`, `restaurant_id`, `organization_id`, `meals`, `weight_lbs`, `delivery_minutes` (accepted_at to this drop off), `is_demo_seed`. Write one row per confirmed drop off. Seed the past demo deliveries with `is_demo_seed = true`.
-- On startup call `app.intelligence.ensure_model()` so the first `/ml` request doesn't pay for training.
-- Routes: `POST /ml/predict` → `{"probability": predict_surplus(body)}`; `GET /ml/forecast` → `forecast_tonight(restaurant_rows)` (reads `name`, and `food_category` or `cuisine`, `seats`, `hist_surplus_rate` when present; falls back to defaults); `GET /ml/info` → `model_info()`; `GET /impact` → `compute_impact(db)`.
-- Env: `MEAL_VALUE_USD` (assumption, default 3.0) and optional `SURPLUS_MODEL_PATH`. Please add both to `backend/.env.example`.
-- Imports work with `app` as a namespace package. If you add `backend/app/__init__.py`, nothing changes.
+- Nothing.
 
-**Dev 3 (logistics):**
-- `candidate_needs` can be dicts or ORM rows with `id`, `meals_needed`, `meals_fulfilled`, `priority`, `deadline`. Add `distance_miles` (restaurant to organization) so ties break by distance.
-- The result is in rank order, not driving order; order the stops by nearest neighbor on your side.
-- `demand_fit(meals, allocations, needs)` gives the `demand_fit` score term and doesn't count leftover meals pushed over a need.
+## Blocked / needs a person
 
-**Dev 1 (frontend):**
-- `/ml/info` returns `model_name`, `roc_auc`, `roc_auc_by_model`, `data`, and `note`. Show the "Prototype model, synthetic training data" label next to the forecast table.
-- Label `community_value_estimate_usd` as an estimate.
+- **Deploy**: needs the team's Render and Vercel accounts. Steps in README "Deploy".
+- **Mapbox**: put the token in `backend/.env` as `MAPBOX_ACCESS_TOKEN` (server routing). For Mapbox map tiles, a
+  public `pk.` token goes in `frontend/.env.local` as `NEXT_PUBLIC_MAPBOX_TOKEN`. Never commit either file.
+- **Statistics**: fill every `[SOURCE NEEDED]` in PITCH.md and DEVPOST.md from USDA, ReFED or Feeding America.
+- **MEAL_VALUE_USD**: 3.0 is a placeholder assumption; replace it with a sourced value.
+- **Sponsor challenges**: none chosen yet; add them to DEVPOST.md.
+
+## Next
+
+1. Deploy (Render + Vercel), then run the e2e test against the deployed URLs.
+2. Record the backup demo video.
+3. Screenshots into the README.
+4. Practice the pitch with the timings in PITCH.md.
