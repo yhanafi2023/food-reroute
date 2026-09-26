@@ -21,7 +21,7 @@ ROLES = ("restaurant_staff", "restaurant_manager", "volunteer", "org_staff", "or
 RESTAURANT_ROLES = ("restaurant_staff", "restaurant_manager")
 ORG_ROLES = ("org_staff", "org_manager")
 ORG_KINDS = ("restaurant", "receiver")
-UNITS = ("individual_meal", "bag", "box", "tray", "half_pan", "full_pan")
+UNITS = ("individual_meal", "bag", "box", "tray", "half_pan", "full_pan", "lb")
 CATEGORIES = ("hot", "cold", "frozen", "shelf_stable")
 RESCUE_STATUSES = ("posted", "matched", "en_route_pickup", "picked_up", "en_route_dropoff", "delivered", "received",
                    "cancelled", "expired", "rejected", "reassigned")
@@ -114,12 +114,18 @@ class RestaurantProfile(Base):
     surplus_usually: Mapped[str] = mapped_column(String(200), default="")
     totes_on_hand: Mapped[int] = mapped_column(Integer, default=0)
     totes_out: Mapped[int] = mapped_column(Integer, default=0)
-    default_fmv_per_meal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    default_cost_basis_per_meal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    basis_election_25pct: Mapped[bool] = mapped_column(Boolean, default=False)
     pickup_instructions: Mapped[str] = mapped_column(Text, default="")
     hauling_cost_per_lb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # only if the restaurant enters it
+    hauling_cost_per_pickup: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    container_size_yd3: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hauling_pickups_per_week: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     public_partner_page: Mapped[bool] = mapped_column(Boolean, default=False)
+    timezone: Mapped[str] = mapped_column(String(40), default="")  # empty: the platform TIMEZONE
+    nudges_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    nudge_minutes_before: Mapped[int] = mapped_column(Integer, default=30)
+    pickups_after_closing: Mapped[bool] = mapped_column(Boolean, default=False)  # the restaurant turns this on
+    social_card_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_social_cards: Mapped[list] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     organization: Mapped[Organization] = relationship(back_populates="restaurant_profile")
@@ -168,7 +174,11 @@ class ReceiverProfile(Base):
     reports_to: Mapped[str] = mapped_column(String(300), default="")
     is_501c3: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     ein: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    ein_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    ein_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # verified_by_admin (qualified donee)
+    not_private_nonoperating_foundation: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    verification_source: Mapped[str] = mapped_column(String(300), default="")
+    ack_frequency: Mapped[str] = mapped_column(String(14), default="per_delivery")  # per_delivery | monthly
+    public_naming_consent: Mapped[bool] = mapped_column(Boolean, default=False)  # may donors name us publicly?
     ein_verified_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ein_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -290,11 +300,11 @@ class Rescue(Base):
     schedule_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recurring_schedules.id", ondelete="SET NULL"), nullable=True)
     duplicate_of: Mapped[Optional[int]] = mapped_column(ForeignKey("rescues.id", ondelete="SET NULL"), nullable=True)
     cancel_reason: Mapped[str] = mapped_column(String(300), default="")
-    fmv_per_meal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    cost_basis_per_meal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     allowed_modes: Mapped[list] = mapped_column(JSON, default=lambda: list(MODES))
     excluded_volunteer_ids: Mapped[list] = mapped_column(JSON, default=list)
     requeue_count: Mapped[int] = mapped_column(Integer, default=0)
+    pickup_not_before: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # the restaurant's closing time
+    post_duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # form opened to submitted
     is_fictional: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -448,21 +458,142 @@ class Notification(Base):
 
 
 class Acknowledgment(Base):
-    """Donor acknowledgment for one received drop off, for the receiving org to e-sign."""
+    """Written acknowledgment from the receiving org: one delivery, or a monthly statement.
+    Once signed, the rendered PDF and its SHA-256 are fixed (a database trigger blocks changes)."""
 
     __tablename__ = "acknowledgments"
-    __table_args__ = (CheckConstraint("status IN ('pending_signature', 'signed')", name="ck_ack_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'signed', 'declined')", name="ck_ack_status"),
+        CheckConstraint("kind IN ('per_delivery', 'monthly')", name="ck_ack_kind"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    stop_id: Mapped[int] = mapped_column(ForeignKey("trip_stops.id", ondelete="CASCADE"), unique=True)
+    kind: Mapped[str] = mapped_column(String(14), default="per_delivery")
     donor_org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     receiver_org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    stop_ids: Mapped[list] = mapped_column(JSON, default=list)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
     content: Mapped[dict] = mapped_column(JSON)
-    status: Mapped[str] = mapped_column(String(20), default="pending_signature")
+    status: Mapped[str] = mapped_column(String(10), default="pending")
     signer_name: Mapped[str] = mapped_column(String(120), default="")
+    signer_title: Mapped[str] = mapped_column(String(120), default="")
     signed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    declined_reason: Mapped[str] = mapped_column(String(300), default="")
+    signed_pdf_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pdf_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    reminders_sent: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RestaurantTaxProfile(Base):
+    """Managers only. Values the business enters; FoodFlow never assumes a rate or income."""
+
+    __tablename__ = "restaurant_tax_profiles"
+    __table_args__ = (
+        CheckConstraint("entity_type IN ('c_corp', 's_corp', 'partnership_llc', 'sole_prop', 'unknown')", name="ck_tax_entity"),
+        CheckConstraint("use_25pct_basis_election = 0 OR keeps_inventory = 0", name="ck_tax_election_needs_no_inventory"),
+        CheckConstraint("tax_rate_pct IS NULL OR (tax_rate_pct >= 0 AND tax_rate_pct <= 100)", name="ck_tax_rate"),
+        CheckConstraint("estimated_taxable_income IS NULL OR estimated_taxable_income >= 0", name="ck_tax_income"),
+    )
+
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(20), default="unknown")
+    keeps_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
+    use_25pct_basis_election: Mapped[bool] = mapped_column(Boolean, default=False)
+    tax_rate_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    estimated_taxable_income: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    tax_year_start: Mapped[date] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+MENU_UNITS = ("tray", "half_pan", "full_pan", "bag", "box", "meal", "lb")
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+    __table_args__ = (
+        CheckConstraint(_in("unit", MENU_UNITS), name="ck_menu_unit"),
+        CheckConstraint("menu_price_per_unit >= 0", name="ck_menu_price"),
+        CheckConstraint("food_cost_pct IS NULL OR (food_cost_pct >= 0 AND food_cost_pct <= 100)", name="ck_menu_cost_pct"),
+        CheckConstraint("actual_cost_per_unit IS NULL OR actual_cost_per_unit >= 0", name="ck_menu_cost"),
+        CheckConstraint("meals_per_unit > 0", name="ck_menu_meals"),
+        UniqueConstraint("organization_id", "name", "unit", name="uq_menu_item"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    unit: Mapped[str] = mapped_column(String(10))
+    menu_price_per_unit: Mapped[float] = mapped_column(Float)
+    food_cost_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_cost_per_unit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    meals_per_unit: Mapped[float] = mapped_column(Float)
+    category: Mapped[str] = mapped_column(String(14), default="hot")
+    allergens: Mapped[list] = mapped_column(JSON, default=list)
+    typical_batch_size: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # optional, units per batch
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+FMV_METHODS = ("own_price_same_item", "own_price_similar_item", "manual_entry")
+BASIS_METHODS = ("actual_cost", "food_cost_pct", "election_25pct_fmv")
+
+
+class DonationItem(Base):
+    """One line of food on a rescue, with its valuation. Only accepted quantities ever count."""
+
+    __tablename__ = "donation_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_item_quantity"),
+        CheckConstraint(f"fmv_method IS NULL OR {_in('fmv_method', FMV_METHODS)}", name="ck_item_fmv_method"),
+        CheckConstraint(f"basis_method IS NULL OR {_in('basis_method', BASIS_METHODS)}", name="ck_item_basis_method"),
+        CheckConstraint("fmv_per_unit IS NULL OR fmv_per_unit >= 0", name="ck_item_fmv"),
+        CheckConstraint("basis_per_unit IS NULL OR basis_per_unit >= 0", name="ck_item_basis"),
+        CheckConstraint("accepted_quantity IS NULL OR accepted_quantity >= 0", name="ck_item_accepted"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rescue_id: Mapped[int] = mapped_column(ForeignKey("rescues.id", ondelete="CASCADE"), index=True)
+    menu_item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("menu_items.id", ondelete="SET NULL"), nullable=True)
+    description: Mapped[str] = mapped_column(String(300))
+    quantity: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(20))
+    estimated_meals: Mapped[float] = mapped_column(Float)
+    weight_lbs: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fmv_per_unit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fmv_method: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    basis_per_unit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    basis_method: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    accepted_quantity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    valued_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    valued_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    rescue: Mapped["Rescue"] = relationship()
+
+    @property
+    def needs_valuation(self) -> bool:
+        return self.fmv_per_unit is None or self.basis_per_unit is None
+
+
+class EOBMFRecord(Base):
+    """Rows imported from the IRS Exempt Organizations Business Master File extract (public data)."""
+
+    __tablename__ = "eo_bmf_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ein: Mapped[str] = mapped_column(String(9), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    street: Mapped[str] = mapped_column(String(200), default="")
+    city: Mapped[str] = mapped_column(String(100), default="")
+    state: Mapped[str] = mapped_column(String(2), default="", index=True)
+    zip: Mapped[str] = mapped_column(String(12), default="")
+    subsection: Mapped[str] = mapped_column(String(2), default="")
+    foundation: Mapped[str] = mapped_column(String(2), default="")
+    deductibility: Mapped[str] = mapped_column(String(1), default="")
+    status: Mapped[str] = mapped_column(String(2), default="")
+    source: Mapped[str] = mapped_column(String(300), default="")
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class RecoveryAgreement(Base):
@@ -558,3 +689,33 @@ class TripLeg(Base):
     predicted_p50: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     features: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PrepChange(Base):
+    """The restaurant marked an over-prep suggestion as 'tried it'."""
+
+    __tablename__ = "prep_changes"
+    __table_args__ = (CheckConstraint("weekday IS NULL OR weekday BETWEEN 0 AND 6", name="ck_prep_weekday"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    menu_item_id: Mapped[int] = mapped_column(ForeignKey("menu_items.id", ondelete="CASCADE"))
+    weekday: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tried_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    note: Mapped[str] = mapped_column(String(300), default="")
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ToteLedger(Base):
+    """Reusable tote program: totes FoodFlow lends a restaurant, totes sent out on trips, and returns."""
+
+    __tablename__ = "tote_ledger"
+    __table_args__ = (CheckConstraint("reason IN ('lent', 'sent_with_trip', 'returned', 'retired')", name="ck_tote_reason"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    change: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(16))
+    trip_id: Mapped[Optional[int]] = mapped_column(ForeignKey("trips.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

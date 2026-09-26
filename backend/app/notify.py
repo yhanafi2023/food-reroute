@@ -29,7 +29,7 @@ log = logging.getLogger("foodflow.notify")
 EVENTS = (
     "login_code", "matched", "approaching", "vehicle_at_curb", "picked_up", "delivered", "receipt_confirmed",
     "cancelled", "reassigned", "expired", "expiry_warning", "rerouted", "intake_confirmation", "acknowledgment",
-    "offer", "duplicate_warning", "draft_ready",
+    "offer", "duplicate_warning", "draft_ready", "closing_nudge", "insight", "value_report",
 )
 
 

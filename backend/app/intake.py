@@ -114,6 +114,7 @@ class Q3(BaseModel):
     reports_to: str = Field(default="", max_length=300)
     is_501c3: bool
     ein: Optional[str] = None
+    acknowledgment_frequency: Literal["per_delivery", "monthly"] = "per_delivery"
 
     @model_validator(mode="after")
     def _ein(self):
@@ -140,10 +141,12 @@ def save_answers(db: Session, org_id: int, question: str, answers: BaseModel, us
         for k in data:
             setattr(profile, k, data[k])
     else:
-        if data["ein"] != profile.ein:
+        if data["ein"] != profile.ein or data["is_501c3"] != profile.is_501c3:
             profile.ein_verified, profile.ein_verified_by, profile.ein_verified_at = False, None, None
+            profile.not_private_nonoperating_foundation, profile.verification_source = None, ""
         for k in ("required_fields", "report_frequency", "report_format", "reports_to", "is_501c3", "ein"):
             setattr(profile, k, data[k])
+        profile.ack_frequency = data["acknowledgment_frequency"]
     db.add(IntakeAnswer(organization_id=org_id, question=question, answers=data, answered_by=user.id if user else None,
                         answered_at=now, confirmed_at=now))
     return profile

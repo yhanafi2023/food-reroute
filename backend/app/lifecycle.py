@@ -202,6 +202,8 @@ def receive_stop(db: Session, stop: TripStop, actor: User, condition: str, recei
                            meals=meals, weight_lbs=round(meals * LBS_PER_MEAL, 1),
                            delivery_minutes=round(((stop.delivered_at or clock.now()) - (trip.started_at or trip.created_at)).total_seconds() / 60, 1),
                            is_demo_seed=trip.rescue.is_fictional))
+    from app.tax.service import update_accepted
+    update_accepted(db, stop.trip.rescue)
     trip = stop.trip
     final = [s for s in trip.stops if s.status not in ("rerouted", "cancelled")]
     if all(s.status in ("received", "rejected") for s in final):

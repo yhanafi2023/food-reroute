@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import clock
-from app.benefits import enhanced_deduction
 from app.db import SessionLocal
 from app.jobs import run_jobs
 from app.main import app
@@ -30,53 +29,6 @@ def delivered_to_shelter(client):
                                                           "received_by_name": "Tomas"}, headers=org)
     assert ok.status_code == 200
     return r, trip, stop, rest, vol, org
-
-
-def test_deduction_math():
-    assert enhanced_deduction(fmv=9, basis=3) == 6.0          # basis + half the appreciation = 6, cap 2 x 3 = 6
-    assert enhanced_deduction(fmv=10, basis=2) == 4.0         # capped at twice the basis
-    assert enhanced_deduction(fmv=5, basis=4) == 4.5          # basis + half of 1
-    fmv = 4.0
-    assert enhanced_deduction(fmv=fmv, basis=0.25 * fmv) == 2.0  # 25% of FMV election: min(1 + 1.5, 2)
-    assert enhanced_deduction(fmv=0, basis=0) == 0.0
-
-
-def test_tax_summary_counts_only_verified_501c3_and_is_labeled(client):
-    delivered_to_shelter(client)
-    mgr = signin(client, EMAILS["restaurant_manager"])
-    s = client.get("/reports/donor-tax-summary", params={"year": 2026}, headers=mgr).json()
-    line = s["lines"][0]
-    assert line["meals"] == 40 and line["fmv"] == 360.0 and line["basis"] == 120.0   # Casa: $9 FMV, $3 basis per meal (fictional)
-    assert line["estimated_deduction"] == 240.0 and s["estimated_total_deduction"] == 240.0
-    assert s["disclaimer"] == "Estimate for your tax preparer. Not tax advice." and "15%" in s["limits_note"] and "5 years" in s["limits_note"]
-    with SessionLocal() as db:  # un-verify the shelter: it no longer counts
-        shelter = db.query(Organization).filter_by(name="Demo Night Shelter").one()
-        shelter.receiver_profile.ein_verified = False
-        db.commit()
-    s2 = client.get("/reports/donor-tax-summary", params={"year": 2026}, headers=mgr).json()
-    assert s2["estimated_total_deduction"] == 0 and s2["excluded_unverified_org_lines"] == 1
-    assert client.get("/reports/donor-tax-summary", params={"year": 2026}, headers=signin(client, EMAILS["restaurant_staff"])).status_code == 403
-    pdf = client.get("/reports/donor-tax-summary", params={"year": 2026, "format": "pdf"}, headers=mgr)
-    assert pdf.content.startswith(b"%PDF") and b"Not tax advice" in pdf.content
-    assert b"estimated_total_deduction" in client.get("/reports/donor-tax-summary", params={"year": 2026, "format": "csv"}, headers=mgr).content
-
-
-def test_acknowledgment_has_every_required_field_and_is_signed_by_the_org(client):
-    delivered_to_shelter(client)
-    om = signin(client, EMAILS["org_manager"])
-    ack = client.get("/acknowledgments", headers=om).json()[0]
-    c = ack["content"]
-    assert c["donor"]["name"] and c["date_received"] and c["food_description"] and c["quantity_meals"] == 40
-    assert c["donee"]["legal_name"] == "Demo Night Shelter Corp. (fictional)" and c["donee"]["ein"] == "00-0000002"
-    joined = " ".join(c["statements"])
-    for phrase in ("care of the ill, the needy, or infants", "not transfer the property in exchange for money",
-                   "Federal Food, Drug, and Cosmetic Act"):
-        assert phrase in joined
-    assert "have a tax professional review" in c["review_note"] and "Not tax advice" in c["disclaimer"]
-    assert client.post(f"/acknowledgments/{ack['id']}/sign", json={"signer_name": "Grace"}, headers=signin(client, EMAILS["org_staff"])).status_code == 403
-    signed = client.post(f"/acknowledgments/{ack['id']}/sign", json={"signer_name": "Grace Demo"}, headers=om).json()
-    assert signed["status"] == "signed"
-    assert client.get(f"/acknowledgments/{ack['id']}", params={"format": "pdf"}, headers=signin(client, EMAILS["restaurant_manager"])).content.startswith(b"%PDF")
 
 
 def test_sb1383_totals(client, fake_clock):
@@ -106,12 +58,12 @@ def test_dashboard_never_assumes_disposal_cost_and_public_page_is_opt_in(client)
     mgr = signin(client, EMAILS["restaurant_manager"])
     d = client.get("/restaurants/me/benefits", headers=mgr).json()
     assert d["meals_donated"] == 40 and d["pounds_diverted"] == 48.0 and d["avoided_disposal_cost"] is None
-    assert d["acknowledgments"] == {"signed": 0, "pending_signature": 1}
+    assert d["unsigned_acknowledgments"] == 1 and d["items_needing_valuation"] == 1  # quick post without a menu item
     prof = client.get("/restaurants/me/profile", headers=mgr).json()
     body = {k: prof[k] for k in ("closing_times", "staffed_until", "totes_on_hand")} | {"hauling_cost_per_lb": 0.1, "public_partner_page": True}
     slug = client.put("/restaurants/me/profile", json=body, headers=mgr).json()["public_slug"]
     assert client.get("/restaurants/me/benefits", headers=mgr).json()["avoided_disposal_cost"] == 4.8
-    assert client.get(f"/public/partners/{slug}").json()["meals_donated"] == 40
+    assert client.get(f"/public/partners/{slug}").json()["meals_donated_to_date"] == 40
     client.put("/restaurants/me/profile", json={**body, "public_partner_page": False}, headers=mgr)
     assert client.get(f"/public/partners/{slug}").status_code == 404
 

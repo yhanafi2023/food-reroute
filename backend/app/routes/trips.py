@@ -206,8 +206,8 @@ def confirm_receipt(stop_id: int, body: ReceiptIn, user: User = Depends(ORG_ANY)
     if s.trip.mode != "volunteer" and s.status in ("received", "rejected"):
         handoff._set(db, s.trip, "received", user, stop_id=s.id)
     if s.status == "received":
-        from app import benefits
-        benefits.create_acknowledgment(db, s)
+        from app.tax import acks
+        acks.on_receipt(db, s)
     people = db.query(User).filter_by(organization_id=s.trip.rescue.restaurant_org_id, active=True).all()
     if s.trip.volunteer:
         people.append(s.trip.volunteer)
