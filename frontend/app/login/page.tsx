@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Brand } from "@/components/AppShell";
+import { TopNav } from "@/components/AppShell";
 import { HOME_FOR_ROLE, useAuth } from "@/lib/auth";
 
 const DEMO = [
@@ -37,8 +37,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-6">
-      <Brand />
+    <>
+    <TopNav />
+    <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-6">
       <div className="grid gap-8 md:grid-cols-2">
         <section className="flex flex-col gap-4">
           <h1 style={{ fontSize: "var(--t-3xl)" }}>Log in</h1>
@@ -71,5 +72,6 @@ export default function LoginPage() {
         </section>
       </div>
     </div>
+    </>
   );
 }

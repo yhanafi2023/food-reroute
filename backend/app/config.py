@@ -19,7 +19,7 @@ if DATABASE_URL.startswith("postgres://"):  # Render style URL
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-secret-change-me-in-backend-dot-env")
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
-os.environ.setdefault("DEMO_MODE", "true")  # routing reads this too (offline by default in demo mode)
+os.environ.setdefault("DEMO_MODE", "true")
 DEMO_MODE = _bool("DEMO_MODE", True)
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 

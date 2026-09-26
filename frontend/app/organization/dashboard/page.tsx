@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import AppShell, { ErrorNote, Loading, Stat } from "@/components/AppShell";
+import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { clock, minutes, number, until } from "@/lib/format";
+import { clock, number, until } from "@/lib/format";
 import type { OrganizationDashboard } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
@@ -24,7 +24,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 export default function OrganizationDashboardPage() {
   const user = useRequireRole("ORGANIZATION");
-  const { data, error, refresh } = usePoll<OrganizationDashboard>(user ? "/organizations/dashboard" : null);
+  const { data, error, refresh, updatedAt } = usePoll<OrganizationDashboard>(user ? "/organizations/dashboard" : null);
   const [form, setForm] = useState({ meals_needed: "25", preferred_food: "Any", deadline: localInput(6), priority: "MEDIUM" });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
@@ -48,8 +48,9 @@ export default function OrganizationDashboardPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
 
   return (
-    <AppShell title={data?.organization.name ?? "Organization"} subtitle="Post what you need. Confirm what arrives.">
-      <ErrorNote message={error} />
+    <AppShell title={data?.organization.name ?? "Organization"} subtitle="Post what you need. Confirm what arrives."
+      actions={<div className="flex flex-wrap items-center gap-2"><span className="chip">Fictional demo organization</span><LiveStatus updatedAt={updatedAt} error={error} /></div>}>
+      <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {note && <div className={`alert ${note.kind === "good" ? "alert-good" : "alert-bad"}`} role="status">{note.text}</div>}
       {!data ? <Loading /> : (
         <>
@@ -63,7 +64,7 @@ export default function OrganizationDashboardPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
                       <strong className="text-xl" style={{ fontFamily: "var(--ff-display)" }}>{item.my_meals} meals incoming</strong>
-                      <span className="text-ink-2">Driver: {d.driver_name} · ETA {minutes(d.eta_minutes)} · from {d.restaurant.name}</span>
+                      <span className="text-ink-2">Driver: {d.driver_name} · from {d.restaurant.name}</span>
                       <span className="text-sm text-ink-3">{d.food_type} · you are stop {item.my_stop_number} of {d.stops.length}</span>
                     </div>
                     <span className={`chip ${d.status === "DELIVERED" ? "chip-good" : ""}`}>{STATUS_TEXT[d.status] ?? d.status}</span>

@@ -267,7 +267,8 @@ def confirm(db: Session, delivery: Delivery, organization_id: Optional[int]) -> 
                 meals=stop.meals,
                 weight_lbs=round(delivery.weight_lbs * stop.meals / max(delivery.meals, 1), 2),
                 delivery_minutes=round(minutes, 1),
-                is_demo_seed=delivery.is_demo_seed,
+                # demo accounts (fictional partners) never count as real impact
+                is_demo_seed=delivery.is_demo_seed or delivery.rescue.restaurant.is_demo_seed,
             )
         )
     if all(s.confirmed_at is not None for s in delivery.match.stops):

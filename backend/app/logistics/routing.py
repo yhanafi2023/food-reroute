@@ -4,9 +4,9 @@ Provider choice (ROUTING_PROVIDER env var):
   mapbox   Mapbox Directions API (needs MAPBOX_ACCESS_TOKEN)
   osrm     OSRM (OSRM_URL, default https://router.project-osrm.org)
   offline  straight line x 1.3 at 22 mph, no network at all
-When ROUTING_PROVIDER is not set: mapbox if a token is present, else offline in
-DEMO_MODE, else osrm. Any network failure or timeout (3 seconds) falls back to
-the offline estimate, so the demo keeps working with wifi turned off.
+When ROUTING_PROVIDER is not set: mapbox if a token is present, else osrm. Any
+network failure or timeout (3 seconds) falls back to the offline estimate
+(source "offline"), so the demo keeps working with wifi turned off.
 """
 from __future__ import annotations
 
@@ -37,8 +37,6 @@ def provider() -> str:
         return chosen
     if os.getenv("MAPBOX_ACCESS_TOKEN"):
         return "mapbox"
-    if os.getenv("DEMO_MODE", "false").lower() == "true":
-        return "offline"
     return "osrm"
 
 

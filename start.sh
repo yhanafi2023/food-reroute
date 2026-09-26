@@ -5,7 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -x "$ROOT/backend/.venv/bin/uvicorn" ]; then
-  python3 -m venv "$ROOT/backend/.venv"
+  # Python 3.10+ with a modern OpenSSL (the macOS Command Line Tools 3.9 cannot reach OSRM/Mapbox over TLS)
+  PY="$(command -v python3.13 || command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3)"
+  "$PY" -m venv "$ROOT/backend/.venv"
   "$ROOT/backend/.venv/bin/pip" install -q -r "$ROOT/backend/requirements.txt"
 fi
 [ -f "$ROOT/backend/.env" ] || cp "$ROOT/backend/.env.example" "$ROOT/backend/.env"

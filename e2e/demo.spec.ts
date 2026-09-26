@@ -47,11 +47,13 @@ test("FoodFlow demo click path", async ({ page, browser }) => {
   await expect(restaurant.getByRole("heading", { name: "Why this match?" })).toBeVisible();
   await expect(restaurant.getByText("CHOSEN")).toBeVisible();
 
-  // 4. Driver accepts and steps through every status
+  // 4. Driver accepts and steps through every status; the restaurant sees a live ML ETA to its door
   const driver = await asRole(browser, "Driver");
   await expect(driver.getByText("New food rescue")).toBeVisible();
   await expect(driver.getByText("50 meals from ABC Restaurant")).toBeVisible();
   await driver.getByRole("button", { name: "Accept" }).click();
+  await expect(restaurant.getByText("Driver to pickup")).toBeVisible();
+  await expect(restaurant.getByText(/About \d+ min/)).toBeVisible();
   for (const step of ["I arrived at the restaurant", "I picked up the food", "Start delivering", "Mark delivered"]) {
     await driver.getByRole("button", { name: step }).click();
     await expect(driver.getByRole("button", { name: step })).toHaveCount(0);
@@ -70,15 +72,16 @@ test("FoodFlow demo click path", async ({ page, browser }) => {
   await shelter.getByRole("button", { name: "Confirm Receipt of 20 meals" }).click();
   await expect(shelter.getByText("Confirmed 20 meals. Thank you!")).toBeVisible();
 
-  // 7. Impact updated: 87 seeded demo meals + 50
+  // 7. The public impact page counts only real deliveries: the demo accounts are fictional, so it stays at 0
   await page.goto("/impact");
-  await expect(page.getByText("137", { exact: true })).toBeVisible();
-  await expect(page.getByText(/include demo data/)).toBeVisible();
+  await expect(page.getByText(/Only real deliveries confirmed by a receiving organization count here/)).toBeVisible();
+  await expect(page.getByText("Meals rescued (real, confirmed)")).toBeVisible();
 
   // 8. Admin runs Simulate Tonight
   const admin = await asRole(browser, "Admin");
   await expect(admin.getByRole("heading", { name: "Network" })).toBeVisible();
-  await expect(admin.getByText("Prototype model, synthetic training data")).toBeVisible();
+  await expect(admin.getByText("Driver ETA model")).toBeVisible();
+  await expect(admin.getByText("Needs real data")).toBeVisible(); // no synthetic surplus forecast is shown
   await admin.getByRole("button", { name: "Simulate Tonight" }).click();
   await expect(admin.getByText(/ABC Restaurant posts 50 meals/)).toBeVisible();
   await expect(admin.getByText(/Marcus matched: 30 to Community Food Bank, 20 to Hope Shelter|Marcus matched: 20 to Hope Shelter, 30 to Community Food Bank/)).toBeVisible();

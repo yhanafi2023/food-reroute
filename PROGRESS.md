@@ -18,15 +18,23 @@ Last updated 2026-09-26.
 - **Shared**: 34 backend tests green; Playwright demo test passes 3 times in a row; `start.sh`; DEMO.md,
   README.md, PITCH.md, DEVPOST.md; `render.yaml`.
 
+- **Miami focus (branch `miami-prospects-eta`)**: researched prospect directory near FIU with sources
+  (DATA_SOURCES.md), seven-day surplus log, measured-only ranking; ETA model trained on 27,172 real OSRM
+  road-network times; live tracking with GPS sharing or estimated position; Uber-style navigation with a
+  full-screen mobile menu; cancellable requests, live status, retry, loading placeholders; simulation stop/restart.
+  46 backend tests, 4 Playwright tests x3 all passing.
+
 ## In progress
 
-- Nothing.
+- Practicality spec (roles within organizations, magic-link login, pickup/drop-off codes, audit log, failure
+  handling, notifications, reports): next.
 
 ## Blocked / needs a person
 
 - **Deploy**: needs the team's Render and Vercel accounts. Steps in README "Deploy".
 - **Mapbox**: put the token in `backend/.env` as `MAPBOX_ACCESS_TOKEN` (server routing). For Mapbox map tiles, a
   public `pk.` token goes in `frontend/.env.local` as `NEXT_PUBLIC_MAPBOX_TOKEN`. Never commit either file.
+- **Measured surplus**: none published for any researched business; needs businesses to complete the seven-day log.
 - **Statistics**: fill every `[SOURCE NEEDED]` in PITCH.md and DEVPOST.md from USDA, ReFED or Feeding America.
 - **MEAL_VALUE_USD**: 3.0 is a placeholder assumption; replace it with a sourced value.
 - **Sponsor challenges**: none chosen yet; add them to DEVPOST.md.

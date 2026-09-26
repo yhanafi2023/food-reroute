@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Brand } from "@/components/AppShell";
+import { TopNav } from "@/components/AppShell";
 import { HOME_FOR_ROLE, useAuth } from "@/lib/auth";
 
 const TYPES = [
@@ -49,8 +49,9 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-6">
-      <Brand />
+    <>
+    <TopNav />
+    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6">
       <h1 style={{ fontSize: "var(--t-3xl)" }}>Create an account</h1>
       <form className="panel flex flex-col gap-4" onSubmit={submit}>
         <fieldset className="flex flex-col gap-2">
@@ -80,5 +81,6 @@ export default function SignupPage() {
         <p className="text-sm text-ink-2">Already have an account? <Link className="font-semibold text-accent underline" href="/login">Log in</Link></p>
       </form>
     </div>
+    </>
   );
 }

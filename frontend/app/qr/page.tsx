@@ -1,7 +1,7 @@
 "use client";
 import { QRCodeSVG } from "qrcode.react";
 import { useSyncExternalStore } from "react";
-import { Brand } from "@/components/AppShell";
+import { TopNav } from "@/components/AppShell";
 
 const noop = () => () => {};
 
@@ -9,8 +9,9 @@ export default function QrPage() {
   const origin = useSyncExternalStore(noop, () => window.location.origin, () => "");
   const url = process.env.NEXT_PUBLIC_SITE_URL || origin;
   return (
-    <div className="mx-auto flex min-h-screen max-w-4xl flex-col items-start gap-8 px-4 py-6">
-      <Brand />
+    <>
+    <TopNav />
+    <div className="mx-auto flex max-w-4xl flex-col items-start gap-8 px-4 py-6">
       <div className="grid w-full items-center gap-8 md:grid-cols-[auto_1fr]">
         <div className="panel inline-flex" aria-label="QR code">
           {url && <QRCodeSVG value={url} size={320} fgColor="#0e1a2b" level="M" marginSize={1} />}
@@ -23,5 +24,6 @@ export default function QrPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

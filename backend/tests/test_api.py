@@ -73,9 +73,12 @@ def test_full_demo_flow(client):
     r = client.post(f"/deliveries/{delivery['id']}/confirm", headers=shelter)
     assert r.status_code == 200 and r.json()["status"] == "CONFIRMED"
 
-    after = client.get("/impact").json()
-    assert after["meals_rescued"] == before["meals_rescued"] + 50
-    assert after["deliveries_completed"] == before["deliveries_completed"] + 1
+    # the demo restaurant is a fictional partner: public (real) impact is unchanged, demo-inclusive impact grows
+    assert client.get("/impact").json()["meals_rescued"] == 0
+    demo_before = 87  # seeded fictional history
+    after = client.get("/impact?include_demo=true").json()
+    assert after["meals_rescued"] == demo_before + 50
+    assert after["deliveries_completed"] == 3 + 1
     needs = client.get("/organizations/needs", headers=org).json()
     assert any(n["status"] == "FULFILLED" and n["meals_fulfilled"] == 30 for n in needs)
     stats = client.get("/restaurants/dashboard", headers=rest).json()["stats"]
