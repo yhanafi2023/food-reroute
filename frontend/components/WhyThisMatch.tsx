@@ -47,7 +47,7 @@ export default function WhyThisMatch({ candidates, reasons }: { candidates: Cand
                         {v !== 0 && (
                           <span className="absolute inset-y-0 rounded"
                             style={{ width, left: cost ? "calc(50% + 2px)" : undefined, right: cost ? undefined : "calc(50% + 2px)",
-                              background: cost ? "#8aa2c4" : "var(--accent)" }} />
+                              background: cost ? "var(--ink-3)" : "var(--cyan)" }} />
                         )}
                       </span>
                       <span role="cell" className="mono num text-right text-xs text-ink-2">

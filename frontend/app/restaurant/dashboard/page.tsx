@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
 import MatchCard from "@/components/MatchCard";
+import RescueSequence from "@/components/RescueSequence";
 import StatusTimeline from "@/components/StatusTimeline";
 import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
@@ -39,7 +40,9 @@ export default function RestaurantDashboardPage() {
     setResult(null);
     const ctrl = new AbortController();
     pending.current = ctrl;
-    const minWait = new Promise((r) => setTimeout(r, 1500));
+    // Gives the rescue-search animation (components/RescueSequence) room to play its full
+    // dispatch -> searching -> optimizing -> match found sequence before the real card appears.
+    const minWait = new Promise((r) => setTimeout(r, 2900));
     try {
       const [res] = await Promise.all([
         api<CreateRescueResponse>("/rescues", {
@@ -123,11 +126,7 @@ export default function RestaurantDashboardPage() {
 
         <div className="flex min-w-0 flex-col gap-4" aria-live="polite">
           {finding && (
-            <div className="panel panel-accent flex items-center gap-3" role="status">
-              <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-accent" aria-hidden />
-              <strong className="flex-1">Finding the most efficient rescue match...</strong>
-              <button type="button" className="btn btn-ghost" onClick={cancelFinding}>Cancel</button>
-            </div>
+            <RescueSequence meals={Number(form.meals) || 0} restaurantName={data?.restaurant.name ?? "your restaurant"} onCancel={cancelFinding} />
           )}
           {!finding && result && !result.match && (
             <div className="alert alert-info">Rescue posted. No driver is free right now; FoodFlow will keep trying and an admin can run matching.</div>

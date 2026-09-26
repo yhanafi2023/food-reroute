@@ -12,4 +12,4 @@ export default function FlowMap(props: MapViewProps) {
   return <MapView {...props} />;
 }
 
-export type { MapPoint, MapRoute, Mover } from "./MapView";
+export type { DriverState, MapPoint, MapRoute, Mover } from "./MapView";

@@ -9,11 +9,11 @@ export function Brand({ light = false }: { light?: boolean }) {
   return (
     <Link href="/" className="flex items-center gap-2 no-underline" aria-label="FoodFlow home">
       <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden>
-        <circle cx="6" cy="21" r="4" fill="#e0701c" />
-        <circle cx="22" cy="7" r="4" fill="#2fa36b" />
-        <path d="M6 21 C 6 12, 22 16, 22 7" stroke={light ? "#8fb4ff" : "#1456d9"} strokeWidth="3" fill="none" strokeLinecap="round" />
+        <circle cx="6" cy="21" r="4" fill="#f59e0b" />
+        <circle cx="22" cy="7" r="4" fill="#34d399" />
+        <path d="M6 21 C 6 12, 22 16, 22 7" stroke={light ? "#22d3ee" : "#3b82f6"} strokeWidth="3" fill="none" strokeLinecap="round" />
       </svg>
-      <span className={`text-xl font-bold tracking-tight ${light ? "text-white" : "text-ink"}`} style={{ fontFamily: "var(--ff-display)" }}>
+      <span className="text-xl font-bold tracking-tight text-ink" style={{ fontFamily: "var(--ff-display)" }}>
         FoodFlow
       </span>
     </Link>
@@ -67,7 +67,7 @@ export function TopNav() {
   const active = (href: string) => (href === pathname ? "page" : undefined);
 
   return (
-    <header className="sticky top-0 z-[1100] bg-ink text-white">
+    <header className="sticky top-0 z-[1100] border-b border-line bg-panel/95 text-ink backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-8">
           <Brand light />
@@ -83,15 +83,15 @@ export function TopNav() {
         <div className="hidden items-center gap-2 md:flex">
           {!ready ? null : user ? (
             <>
-              <Link href={HOME_FOR_ROLE[user.role]} className="rounded-full px-4 py-2 text-sm font-semibold text-white/85 no-underline hover:bg-white/10">
+              <Link href={HOME_FOR_ROLE[user.role]} className="rounded-full px-4 py-2 text-sm font-semibold text-ink/85 no-underline hover:bg-white/10">
                 {user.name}
               </Link>
-              <button onClick={signOut} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-white/90">Log out</button>
+              <button onClick={signOut} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-ink">Log out</button>
             </>
           ) : (
             <>
-              <Link href="/login" className="rounded-full px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-white/10">Log in</Link>
-              <Link href="/signup" className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink no-underline hover:bg-white/90">Sign up</Link>
+              <Link href="/login" className="rounded-full px-4 py-2 text-sm font-semibold text-ink no-underline hover:bg-white/10">Log in</Link>
+              <Link href="/signup" className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-accent-ink">Sign up</Link>
             </>
           )}
         </div>
@@ -103,7 +103,7 @@ export function TopNav() {
 
       {open && (
         <div id="mobile-menu" ref={menuRef} role="dialog" aria-modal="true" aria-label="Menu"
-          className="fixed inset-0 z-[1200] flex flex-col bg-ink px-4 pb-8 text-white md:hidden">
+          className="fixed inset-0 z-[1200] flex flex-col bg-paper px-4 pb-8 text-ink md:hidden">
           <div className="flex h-16 items-center justify-between">
             <Brand light />
             <button className="grid h-11 w-11 place-items-center rounded-full hover:bg-white/10" aria-label="Close menu" onClick={() => setOpen(false)}>
@@ -113,7 +113,7 @@ export function TopNav() {
           <nav className="flex flex-1 flex-col gap-1 pt-4" aria-label="Mobile">
             {links.map((l) => (
               <Link key={l.href} href={l.href} onClick={() => setOpen(false)} aria-current={active(l.href)}
-                className="rounded-lg px-2 py-3 text-2xl font-bold text-white no-underline hover:bg-white/10" style={{ fontFamily: "var(--ff-display)" }}>
+                className="rounded-lg px-2 py-3 text-2xl font-bold text-ink no-underline hover:bg-white/10" style={{ fontFamily: "var(--ff-display)" }}>
                 {l.label}
               </Link>
             ))}
@@ -121,13 +121,13 @@ export function TopNav() {
           <div className="flex flex-col gap-3">
             {user ? (
               <>
-                <span className="text-sm text-white/70">Signed in as {user.name} ({user.role.toLowerCase()})</span>
-                <button onClick={signOut} className="min-h-12 rounded-full bg-white text-lg font-semibold text-ink">Log out</button>
+                <span className="text-sm text-ink-3">Signed in as {user.name} ({user.role.toLowerCase()})</span>
+                <button onClick={signOut} className="min-h-12 rounded-full bg-accent text-lg font-semibold text-white">Log out</button>
               </>
             ) : (
               <>
-                <Link href="/signup" onClick={() => setOpen(false)} className="grid min-h-12 place-items-center rounded-full bg-white text-lg font-semibold text-ink no-underline">Sign up</Link>
-                <Link href="/login" onClick={() => setOpen(false)} className="grid min-h-12 place-items-center rounded-full border border-white/40 text-lg font-semibold text-white no-underline">Log in</Link>
+                <Link href="/signup" onClick={() => setOpen(false)} className="grid min-h-12 place-items-center rounded-full bg-accent text-lg font-semibold text-white no-underline">Sign up</Link>
+                <Link href="/login" onClick={() => setOpen(false)} className="grid min-h-12 place-items-center rounded-full border border-line text-lg font-semibold text-ink no-underline">Log in</Link>
               </>
             )}
           </div>
