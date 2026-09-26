@@ -87,6 +87,27 @@ class User(Base):
     organization: Mapped[Optional[Organization]] = relationship()
 
 
+class LoginAttempt(Base):
+    """A failed sign-in, keyed by "email:<address>" or "ip:<address>". Read by the login throttle
+    (app/auth.py); kept in the database because serverless instances share no memory. Pruned by the jobs."""
+
+    __tablename__ = "login_attempts"
+    __table_args__ = (Index("ix_login_attempts_key_at", "key", "at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(300))
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class JobLock(Base):
+    """Lease so only one run of the scheduled jobs happens at a time, across instances and duplicate cron calls."""
+
+    __tablename__ = "job_locks"
+
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    locked_until: Mapped[datetime] = mapped_column(DateTime)
+
+
 class RestaurantProfile(Base):
     __tablename__ = "restaurant_profiles"
     __table_args__ = (
@@ -119,7 +140,7 @@ class ReceiverProfile(Base):
     __table_args__ = (
         CheckConstraint("cutoff_minutes IS NULL OR cutoff_minutes >= 0", name="ck_cutoff"),
         CheckConstraint("max_meals_per_delivery IS NULL OR max_meals_per_delivery > 0", name="ck_max_meals"),
-        CheckConstraint("(is_501c3 = 0 OR is_501c3 IS NULL) OR (ein IS NOT NULL AND ein != '')", name="ck_ein_required"),
+        CheckConstraint("(NOT is_501c3 OR is_501c3 IS NULL) OR (ein IS NOT NULL AND ein != '')", name="ck_ein_required"),
     )
 
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
@@ -247,7 +268,7 @@ class Rescue(Base):
         CheckConstraint(_in("unit", UNITS), name="ck_rescue_unit"),
         CheckConstraint(_in("category", CATEGORIES), name="ck_rescue_category"),
         CheckConstraint("quantity > 0 AND est_meals > 0", name="ck_rescue_quantity"),
-        CheckConstraint("is_draft = 1 OR (attested_by IS NOT NULL AND attested_at IS NOT NULL)", name="ck_rescue_attested"),
+        CheckConstraint("is_draft OR (attested_by IS NOT NULL AND attested_at IS NOT NULL)", name="ck_rescue_attested"),
         Index("ix_rescue_status_safe_until", "status", "safe_until"),
         Index("ix_rescue_org_created", "restaurant_org_id", "created_at"),
     )
@@ -298,7 +319,7 @@ class Trip(Base):
         CheckConstraint(_in("mode", MODES), name="ck_trip_mode"),
         CheckConstraint(f"handoff_state IS NULL OR {_in('handoff_state', HANDOFF_STATES)}", name="ck_trip_handoff"),
         CheckConstraint("(mode = 'volunteer') = (volunteer_user_id IS NOT NULL)", name="ck_trip_carrier"),
-        CheckConstraint("(mode = 'volunteer') OR simulated = 1", name="ck_trip_av_simulated"),
+        CheckConstraint("(mode = 'volunteer') OR simulated", name="ck_trip_av_simulated"),
         Index("ix_trip_volunteer_status", "volunteer_user_id", "status"),
     )
 

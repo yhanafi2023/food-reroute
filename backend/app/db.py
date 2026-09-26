@@ -6,9 +6,9 @@ from typing import Iterator
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, SERVERLESS
 
 
 def _sqlite_pragmas(dbapi_conn, _record):
@@ -24,7 +24,12 @@ def make_engine(url: str) -> Engine:
                             poolclass=StaticPool if in_memory else None)
         event.listen(eng, "connect", _sqlite_pragmas)
         return eng
-    return create_engine(url, pool_pre_ping=True)
+    # Supabase's transaction pooler (port 6543) hands each transaction to any server connection,
+    # so server-side prepared statements cannot be reused.
+    connect_args = {"prepare_threshold": None} if url.startswith("postgresql+psycopg") else {}
+    if SERVERLESS:  # short-lived instances: let the pooler own connections instead of holding one per instance
+        return create_engine(url, poolclass=NullPool, connect_args=connect_args)
+    return create_engine(url, pool_pre_ping=True, connect_args=connect_args)
 
 
 engine = make_engine(DATABASE_URL)

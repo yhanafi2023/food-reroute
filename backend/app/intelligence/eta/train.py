@@ -31,7 +31,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import joblib
 import numpy as np
 import pandas as pd
 import sklearn
@@ -41,6 +40,7 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from app.intelligence.artifacts import save_bundle
 from app.intelligence.eta.features import FEATURES, leg_features
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
@@ -156,8 +156,7 @@ def train(path: Path = None, real_trips: Optional[List[Dict[str, Any]]] = None) 
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "sklearn_version": sklearn.__version__,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, path)
+    save_bundle(bundle, path)
     return bundle
 
 

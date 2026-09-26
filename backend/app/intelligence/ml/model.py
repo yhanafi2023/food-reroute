@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import joblib
 import pandas as pd
 
+from app.intelligence.artifacts import is_current
 from app.intelligence.ml.generate_data import FEATURES, HIST_PRIOR
 from app.intelligence.ml.train import DATA_NOTE, model_path, train
 
@@ -51,7 +52,7 @@ def ensure_model() -> Dict[str, Any]:
                 except Exception:
                     # A model saved by an incompatible scikit-learn version: retrain.
                     bundle = None
-            _bundle = bundle if bundle is not None else train(path)
+            _bundle = bundle if is_current(bundle) else train(path)
     return _bundle
 
 

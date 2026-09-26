@@ -1,13 +1,14 @@
 """Sign-in, registration, and organization membership (section 1)."""
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app import audit
 from app.auth import (
-    PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, authenticate, create_token, get_current_user, hash_password, user_json,
+    PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, authenticate, client_ip, create_token, get_current_user, hash_password,
+    user_json,
 )
 from app.db import get_db
 from app.models import Organization, ReceiverProfile, RestaurantProfile, User, VolunteerProfile
@@ -64,8 +65,8 @@ def _session(user: User) -> dict:
 
 
 @router.post("/auth/login")
-def login(body: LoginIn, db: Session = Depends(get_db)):
-    return _session(authenticate(db, body.email, body.password))
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    return _session(authenticate(db, body.email, body.password, client_ip(request)))
 
 
 @router.get("/auth/me")

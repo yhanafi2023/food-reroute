@@ -10,6 +10,10 @@ later without breaking existing passwords.
 
 Demo accounts (seed file) share the published DEMO_PASSWORD from app/seed.py and can
 sign in only while DEMO_MODE is on.
+
+Throttle: after MAX_FAILURES_PER_EMAIL failed attempts for one email, or MAX_FAILURES_PER_IP
+from one address, within THROTTLE_WINDOW_MIN, sign-in answers 429 until the window passes.
+A successful sign-in clears that email's failures.
 """
 from __future__ import annotations
 
@@ -21,20 +25,23 @@ from datetime import timedelta
 from typing import Callable, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app import clock
-from app.config import DEMO_MODE, JWT_EXPIRE_HOURS, JWT_SECRET
+from app.config import DEMO_MODE, JWT_EXPIRE_HOURS, JWT_SECRET, SERVERLESS
 from app.db import get_db
-from app.models import ORG_ROLES, RESTAURANT_ROLES, User
+from app.models import ORG_ROLES, RESTAURANT_ROLES, LoginAttempt, User
 
 ALGORITHM = "HS256"
 PASSWORD_SCHEME = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 600_000  # OWASP guidance for PBKDF2-HMAC-SHA256
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
+THROTTLE_WINDOW_MIN = 15
+MAX_FAILURES_PER_EMAIL = 10
+MAX_FAILURES_PER_IP = 50
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -55,10 +62,30 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def authenticate(db: Session, email: str, password: str) -> User:
-    user = db.query(User).filter_by(email=email.strip().lower(), active=True).one_or_none()
+def client_ip(request: Request) -> Optional[str]:
+    """Behind Vercel the socket peer is Vercel's proxy, which sets x-real-ip to the caller; elsewhere trust the peer."""
+    if SERVERLESS and request.headers.get("x-real-ip"):
+        return request.headers["x-real-ip"]
+    return request.client.host if request.client else None
+
+
+def authenticate(db: Session, email: str, password: str, client_ip: Optional[str] = None) -> User:
+    email = email.strip().lower()
+    keys = {f"email:{email}": MAX_FAILURES_PER_EMAIL}
+    if client_ip:
+        keys[f"ip:{client_ip}"] = MAX_FAILURES_PER_IP
+    since = clock.now() - timedelta(minutes=THROTTLE_WINDOW_MIN)
+    for key, limit in keys.items():
+        if db.query(LoginAttempt).filter(LoginAttempt.key == key, LoginAttempt.at >= since).count() >= limit:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                                f"Too many failed sign-in attempts. Try again in {THROTTLE_WINDOW_MIN} minutes.")
+    user = db.query(User).filter_by(email=email, active=True).one_or_none()
     if user is None or not verify_password(password, user.password_hash):
+        db.add_all([LoginAttempt(key=key, at=clock.now()) for key in keys])
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+    db.query(LoginAttempt).filter(LoginAttempt.key == f"email:{email}").delete()
+    db.commit()
     if user.is_demo_account and not DEMO_MODE:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Demo accounts can sign in only while DEMO_MODE is on")
     return user

@@ -208,6 +208,11 @@ def schema_is_current() -> bool:
 
 def seed_if_empty() -> None:
     if not schema_is_current():
+        # Dropping every table is only acceptable for the local demo database. Anywhere else
+        # (e.g. Supabase with DEMO_MODE left on) an outdated schema must go through migrations.
+        if engine.dialect.name != "sqlite" and inspect(engine).get_table_names():
+            raise RuntimeError("DEMO_MODE found an outdated schema on a non-SQLite database and will not drop it. "
+                               "Run `alembic upgrade head`, or set DEMO_MODE=false.")
         reset_database()
         return
     create_schema(engine)

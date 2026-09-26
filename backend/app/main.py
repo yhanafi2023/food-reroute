@@ -6,24 +6,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS
-from app.db import create_schema
+from app.config import CORS_ORIGIN_REGEX, CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS, check_secrets
 from app.idempotency import IdempotencyMiddleware
 from app.routes import (
-    analytics_routes, auth_routes, community_need, dashboards, me, onboarding, prospects, records, rescues, trips,
+    analytics_routes, auth_routes, community_need, dashboards, internal, me, onboarding, prospects, records, rescues,
+    trips,
 )
 
 logging.basicConfig(level=logging.INFO)
+check_secrets()  # refuse to serve with a guessable JWT secret outside local demo mode
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Outside demo mode the schema is owned by migrations (alembic upgrade head), never created here.
     if DEMO_MODE:
         from app.seed import seed_if_empty
 
         seed_if_empty()
-    else:
-        create_schema()
     task = None
     if RUN_SCHEDULER:
         task = asyncio.create_task(_scheduler())
@@ -47,10 +47,11 @@ async def _scheduler():
 app = FastAPI(title="FoodFlow API", description="Food rescue logistics: restaurants, volunteers, simulated AVs, receiving orgs.",
               lifespan=lifespan)
 app.add_middleware(IdempotencyMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False, allow_methods=["*"],
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_origin_regex=CORS_ORIGIN_REGEX,
+                   allow_credentials=False, allow_methods=["*"],
                    allow_headers=["*"], expose_headers=["Idempotent-Replayed"])
 for module in (auth_routes, me, onboarding, rescues, trips, records, analytics_routes, prospects, community_need,
-              dashboards):
+              dashboards, internal):
     app.include_router(module.router)
 
 

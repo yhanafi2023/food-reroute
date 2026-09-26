@@ -35,12 +35,15 @@ the real services (see `backend/app/seed.py` for sign-in details). `python -m ap
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | SQLite file | `postgresql://...` for Postgres |
-| `JWT_SECRET` | dev value | Signs sessions; set a long random value anywhere public |
+| `DATABASE_URL` | SQLite file | `postgresql://...` for Postgres (schema via `alembic upgrade head`) |
+| `JWT_SECRET` | dev value | Signs sessions; the app refuses to start without 32+ random characters when `DEMO_MODE=false` or on Vercel |
 | `DEMO_MODE` | `true` | Seed fictional demo data; demo accounts (password `demo1234`) can sign in only in this mode |
 | `TIMEZONE` | `America/New_York` | Local time for receiving hours and schedules |
 | `CORS_ORIGINS` | localhost:3000 | Allowed origins |
-| `RUN_SCHEDULER`, `SCHEDULER_SECONDS` | `true`, `30` | Background checks (no-shows, expiry, vehicles, reports) |
+| `RUN_SCHEDULER`, `SCHEDULER_SECONDS` | `true` (off on Vercel), `30` | Background checks (no-shows, expiry, vehicles, reports) |
+| `CRON_SECRET` | empty | Enables `GET/POST /internal/jobs/run` for an external scheduler (`Authorization: Bearer <secret>`) |
+| `CORS_ORIGIN_REGEX` | empty | Extra allowed origins by pattern, e.g. Vercel preview URLs |
+| `SERVERLESS` | `true` on Vercel | No connection pool per instance; trust Vercel's `x-real-ip` for the login throttle |
 | `ROUTING_SERVICE_URL` | empty | Teammate routing service (`POST /eta`); empty uses the in-process ETA model |
 | `ALLOCATION_SERVICE_URL` | empty | Teammate allocation service (`POST /allocate`); empty uses the in-process allocator |
 | `SERVICE_TIMEOUT_SECONDS` | `3` | Before falling back (results flagged `estimated: true`) |
@@ -110,10 +113,12 @@ quantity exists; the seven-day surplus log (also `PUT /restaurants/me/surplus-lo
 
 ## Deploy
 
-- **Backend on Render**: `render.yaml` is a blueprint (Python web service, `DEMO_MODE=true`). Set `CORS_ORIGINS` to
-  the Vercel URL and optionally `MAPBOX_ACCESS_TOKEN`. A Render Postgres `DATABASE_URL` also works
-  (`pip install psycopg2-binary`).
-- **Frontend on Vercel**: root directory `frontend`, env `NEXT_PUBLIC_API_URL=https://<render-app>.onrender.com`,
+- **Production (Vercel + Supabase)**: step by step in [DEPLOY.md](DEPLOY.md). The schema comes from Alembic
+  migrations (`backend/migrations`, `alembic upgrade head`), the models are trained at build time, and the
+  scheduled jobs run through `/internal/jobs/run`.
+- **Demo backend on Render**: `render.yaml` is a blueprint (Python web service, `DEMO_MODE=true`). Set `CORS_ORIGINS` to
+  the Vercel URL and optionally `MAPBOX_ACCESS_TOKEN`. Postgres URLs work as-is (psycopg 3 is installed).
+- **Frontend on Vercel**: root directory `frontend`, env `NEXT_PUBLIC_API_URL=https://<api-host>`,
   optional `NEXT_PUBLIC_MAPBOX_TOKEN` and `NEXT_PUBLIC_SITE_URL`.
 
 ## Team and git workflow

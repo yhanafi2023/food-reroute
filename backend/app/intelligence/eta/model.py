@@ -14,6 +14,7 @@ import joblib
 from threadpoolctl import threadpool_limits
 import pandas as pd
 
+from app.intelligence.artifacts import is_current
 from app.intelligence.eta.features import FEATURES, HANDLING_MINUTES_PER_STOP, leg_features
 from app.intelligence.eta.train import _ridge_frame, model_path, train
 
@@ -36,7 +37,7 @@ def ensure_eta_model() -> Dict[str, Any]:
                     bundle = joblib.load(path)
                 except Exception:
                     bundle = None
-            _bundle = bundle if bundle is not None else train(path)
+            _bundle = bundle if is_current(bundle) else train(path)
     return _bundle
 
 

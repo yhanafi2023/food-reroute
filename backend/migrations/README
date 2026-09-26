@@ -1,0 +1,7 @@
+Alembic migrations for the FoodFlow schema (app/models.py).
+
+  cd backend
+  DATABASE_URL=postgresql://... alembic upgrade head      # apply (use the direct port 5432 URL on Supabase)
+  alembic revision --autogenerate -m "describe the change" # after editing app/models.py
+
+Demo mode (DEMO_MODE=true on SQLite) still builds the schema itself and resets it on model changes.

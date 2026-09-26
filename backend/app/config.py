@@ -14,17 +14,42 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BACKEND_DIR / 'foodflow.db'}")
-if DATABASE_URL.startswith("postgres://"):  # Render style URL
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-secret-change-me-in-backend-dot-env")
-JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
+def database_url(raw: str) -> str:
+    """Supabase, Render and Heroku hand out postgres:// or postgresql:// URLs; use the psycopg 3 driver."""
+    for prefix in ("postgres://", "postgresql://"):
+        if raw.startswith(prefix):
+            return "postgresql+psycopg://" + raw[len(prefix):]
+    return raw
+
+
+DATABASE_URL = database_url(os.getenv("DATABASE_URL", f"sqlite:///{BACKEND_DIR / 'foodflow.db'}"))
 os.environ.setdefault("DEMO_MODE", "true")
 DEMO_MODE = _bool("DEMO_MODE", True)
+# Vercel sets VERCEL=1: every request may land on a fresh, short-lived instance.
+SERVERLESS = _bool("SERVERLESS", bool(os.getenv("VERCEL")))
+
+DEV_JWT_SECRET = "dev-only-secret-change-me-in-backend-dot-env"
+JWT_SECRET = os.getenv("JWT_SECRET", DEV_JWT_SECRET)
+
+
+def check_secrets() -> None:
+    """Called when the web app starts (app/main.py); scripts such as migrations don't need the secret."""
+    if (not DEMO_MODE or SERVERLESS) and (len(JWT_SECRET) < 32 or JWT_SECRET in (
+            DEV_JWT_SECRET, "replace-with-a-long-random-string")):
+        raise RuntimeError("Set JWT_SECRET to a random string of at least 32 characters, e.g. "
+                           "python -c \"import secrets; print(secrets.token_urlsafe(48))\"")
+
+
+JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+# Optional regex for extra origins, e.g. Vercel previews: https://food-reroute-[a-z0-9-]+\.vercel\.app
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX") or None
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")  # Miami-Dade
-RUN_SCHEDULER = _bool("RUN_SCHEDULER", True)
+# The in-process loop suits one long-running server; serverless deployments call /internal/jobs/run on a schedule.
+RUN_SCHEDULER = _bool("RUN_SCHEDULER", not SERVERLESS)
 SCHEDULER_SECONDS = int(os.getenv("SCHEDULER_SECONDS", "30"))
+# Shared secret for the scheduled jobs endpoint (sent as "Authorization: Bearer <CRON_SECRET>"). Empty: endpoint off.
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 # Teammate services over HTTP. Empty: use the in-process modules (logistics / intelligence).
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "").rstrip("/")

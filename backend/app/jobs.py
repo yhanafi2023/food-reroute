@@ -167,6 +167,52 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
     return counts
 
 
-def run_jobs_now() -> Dict[str, int]:
-    with SessionLocal() as db:
+LOCK_LEASE_MIN = 5  # longer than any run; a crashed run's lease simply expires
+LOGIN_ATTEMPTS_KEEP_HOURS = 24
+
+
+def _take_lock(db: Session) -> bool:
+    """Take the jobs lease with one conditional UPDATE, so two instances or a duplicate cron call cannot both win."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import JobLock
+
+    now = clock.now()
+    if db.get(JobLock, "jobs") is None:
+        try:
+            with db.begin_nested():
+                db.add(JobLock(name="jobs", locked_until=now))
+        except IntegrityError:
+            pass  # another instance created it first
+        db.commit()
+    taken = (db.query(JobLock).filter(JobLock.name == "jobs", JobLock.locked_until <= now)
+             .update({JobLock.locked_until: now + timedelta(minutes=LOCK_LEASE_MIN)}, synchronize_session=False))
+    db.commit()
+    return taken == 1
+
+
+def _release_lock(db: Session) -> None:
+    from app.models import JobLock
+
+    db.rollback()
+    db.query(JobLock).filter(JobLock.name == "jobs").update({JobLock.locked_until: clock.now()}, synchronize_session=False)
+    db.commit()
+
+
+def run_jobs_exclusive(db: Session) -> Dict[str, object]:
+    """run_jobs guarded by the lease (scheduler loop and /internal/jobs/run); also prunes old login attempts."""
+    if not _take_lock(db):
+        return {"skipped": "another run is in progress"}
+    try:
+        from app.models import LoginAttempt
+
+        db.query(LoginAttempt).filter(
+            LoginAttempt.at < clock.now() - timedelta(hours=LOGIN_ATTEMPTS_KEEP_HOURS)).delete(synchronize_session=False)
         return run_jobs(db)
+    finally:
+        _release_lock(db)
+
+
+def run_jobs_now() -> Dict[str, object]:
+    with SessionLocal() as db:
+        return run_jobs_exclusive(db)

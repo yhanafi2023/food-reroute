@@ -19,7 +19,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-import joblib
 import pandas as pd
 import sklearn
 from sklearn.compose import ColumnTransformer
@@ -29,6 +28,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from app.intelligence.artifacts import save_bundle
 from app.intelligence.ml.generate_data import FEATURES, FEATURES_CATEGORICAL, FEATURES_NUMERIC, LABEL, generate
 
 TEST_DAYS = 30
@@ -113,8 +113,7 @@ def train(path: Path = None) -> Dict[str, Any]:
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "sklearn_version": sklearn.__version__,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, path)
+    save_bundle(bundle, path)
     return bundle
 
 
