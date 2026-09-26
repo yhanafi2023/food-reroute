@@ -1,11 +1,17 @@
 "use client";
 // React Leaflet map. Loaded through components/Map.tsx with ssr: false.
-// Tiles: Mapbox streets when NEXT_PUBLIC_MAPBOX_TOKEN is set, otherwise OpenStreetMap.
+// Tiles: Mapbox dark style when NEXT_PUBLIC_MAPBOX_TOKEN is set, otherwise Esri's free,
+// keyless dark gray canvas basemap (CARTO's dark basemaps now require an API key).
 import L from "leaflet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 
-export interface MapPoint { id: string; lat: number; lng: number; label: string; detail?: string }
+export type DriverState = "AVAILABLE" | "EN_ROUTE" | "ON_DELIVERY" | "OFFLINE";
+
+export interface MapPoint {
+  id: string; lat: number; lng: number; label: string; detail?: string;
+  status?: DriverState; isNew?: boolean;
+}
 export interface MapRoute { id: string; geometry: [number, number][]; stops?: { lat: number; lng: number; label: string }[]; muted?: boolean }
 export interface Mover { id: string; name: string; path: [number, number][]; startedAt: number; durationMs: number }
 
@@ -24,12 +30,38 @@ export interface MapViewProps {
   fitKey?: string;
 }
 
-const COLORS = { restaurant: "#e0701c", driver: "#1456d9", org: "#14734a", route: "#1456d9", muted: "#8aa2c4" };
+const COLORS = {
+  restaurant: "var(--m-restaurant)",
+  org: "var(--m-org)",
+  prospect: "var(--m-restaurant)",
+  route: "var(--cyan)",
+  muted: "var(--m-offline)",
+};
+const DRIVER_COLOR: Record<DriverState, string> = {
+  AVAILABLE: "var(--m-driver)",
+  EN_ROUTE: "var(--m-driver-active)",
+  ON_DELIVERY: "var(--m-driver-active)",
+  OFFLINE: "var(--m-offline)",
+};
 const MIAMI: [number, number] = [25.7574, -80.3733];
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 function numberIcon(n: string) {
   return L.divIcon({ className: "", html: `<div class="map-num">${n}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+}
+
+// Round emoji badge used for restaurants, organizations and drivers. `pulse` adds a live radar
+// ring (currentColor), `newPulse` briefly flashes on creation (a fresh rescue), `offline` dims it.
+function emojiIcon(emoji: string, color: string, opts: { size?: number; pulse?: boolean; offline?: boolean; selected?: boolean; newPulse?: boolean } = {}) {
+  const { size = 30, pulse, offline, selected, newPulse } = opts;
+  const classes = ["map-marker", pulse && "map-marker-pulse", offline && "is-offline", selected && "is-selected", newPulse && "marker-pulse-new"]
+    .filter(Boolean).join(" ");
+  return L.divIcon({
+    className: "",
+    html: `<div class="${classes}" style="background:${color};color:${color}">${emoji}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 // Position `fraction` (0..1) of the way along a polyline, by distance.
@@ -87,15 +119,21 @@ function GlidingDriver({ point }: { point: MapPoint }) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [point.lat, point.lng]);
+  const state = point.status ?? "EN_ROUTE";
   return (
-    <CircleMarker center={pos} radius={9} pathOptions={{ color: "#fff", weight: 3, fillColor: COLORS.driver, fillOpacity: 1 }}>
-      <Tooltip direction="top" offset={[0, -8]}>
+    <Marker position={pos} icon={emojiIcon("🚗", DRIVER_COLOR[state], { size: 30, pulse: state !== "OFFLINE", offline: state === "OFFLINE" })}
+      zIndexOffset={800}>
+      <Tooltip direction="top" offset={[0, -16]}>
         <strong>{point.label}</strong>
-        {point.detail ? <div>{point.detail}</div> : null}
+        <div>{STATE_LABEL[state]}{point.detail ? ` · ${point.detail}` : ""}</div>
       </Tooltip>
-    </CircleMarker>
+    </Marker>
   );
 }
+
+const STATE_LABEL: Record<DriverState, string> = {
+  AVAILABLE: "Available", EN_ROUTE: "En route", ON_DELIVERY: "On delivery", OFFLINE: "Offline",
+};
 
 // Drivers animating along routes (Simulate Tonight). Driven by requestAnimationFrame and elapsed time.
 function Movers({ movers }: { movers: Mover[] }) {
@@ -115,12 +153,29 @@ function Movers({ movers }: { movers: Mover[] }) {
       {movers.map((m) => {
         const f = Math.max(0, Math.min((now - m.startedAt) / Math.max(m.durationMs, 1), 1));
         return (
-          <CircleMarker key={m.id} center={pointAlong(m.path, f)} radius={6}
-            pathOptions={{ color: "#fff", weight: 3, fillColor: COLORS.driver, fillOpacity: 1 }}>
-            <Tooltip direction="top" offset={[0, -8]}>{m.name}</Tooltip>
-          </CircleMarker>
+          <Marker key={m.id} position={pointAlong(m.path, f)} icon={emojiIcon("🚗", DRIVER_COLOR.ON_DELIVERY, { size: 28, pulse: true })} zIndexOffset={800}>
+            <Tooltip direction="top" offset={[0, -14]}>{m.name}</Tooltip>
+          </Marker>
         );
       })}
+    </>
+  );
+}
+
+// Two layers on the same geometry: a soft glowing base so the route stays visible, plus a
+// dashed overlay whose dash offset animates, reading as small particles moving toward the drop off.
+function RouteLine({ route }: { route: MapRoute }) {
+  if (route.muted) {
+    return (
+      <Polyline positions={route.geometry}
+        pathOptions={{ color: COLORS.muted, weight: 3.5, opacity: 0.6, dashArray: "5 9", className: "route-muted" }} />
+    );
+  }
+  return (
+    <>
+      <Polyline positions={route.geometry} pathOptions={{ color: COLORS.route, weight: 5, opacity: 0.35, className: "route-glow" }} />
+      <Polyline positions={route.geometry}
+        pathOptions={{ color: "#a5f3fc", weight: 2.5, opacity: 0.95, dashArray: "1 13", className: "route-particles" }} />
     </>
   );
 }
@@ -146,23 +201,20 @@ export default function MapView({
       <MapContainer center={MIAMI} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         {MAPBOX_TOKEN ? (
           <TileLayer
-            url={`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`}
+            url={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`}
             tileSize={512}
             zoomOffset={-1}
             attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           />
         ) : (
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+            attribution="&copy; Esri &amp; HERE, Garmin, OpenStreetMap contributors, and the GIS user community"
           />
         )}
         <FitBounds points={allPoints} fitKey={key} />
 
-        {routes.map((r) => (
-          <Polyline key={r.id} positions={r.geometry}
-            pathOptions={{ color: r.muted ? COLORS.muted : COLORS.route, weight: r.muted ? 4 : 6, opacity: 0.9, dashArray: r.muted ? "6 8" : undefined }} />
-        ))}
+        {routes.map((r) => <RouteLine key={r.id} route={r} />)}
         {routes.flatMap((r) =>
           (r.stops ?? []).map((s, i) => (
             <Marker key={`${r.id}-stop-${i}`} position={[s.lat, s.lng]} icon={numberIcon(String(i + 1))}
@@ -171,26 +223,24 @@ export default function MapView({
         )}
 
         {restaurants.map((p) => (
-          <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={9}
-            pathOptions={{ color: "#fff", weight: 2, fillColor: COLORS.restaurant, fillOpacity: 1 }}>
-            <Tooltip direction="top" offset={[0, -8]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
-          </CircleMarker>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={emojiIcon("🍽️", COLORS.restaurant, { newPulse: p.isNew })} zIndexOffset={600}>
+            <Tooltip direction="top" offset={[0, -16]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
+          </Marker>
         ))}
         {organizations.map((p) => (
-          <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={9}
-            pathOptions={{ color: "#fff", weight: 2, fillColor: COLORS.org, fillOpacity: 1 }}>
-            <Tooltip direction="top" offset={[0, -8]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
-          </CircleMarker>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={emojiIcon("🏢", COLORS.org)} zIndexOffset={600}>
+            <Tooltip direction="top" offset={[0, -16]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
+          </Marker>
         ))}
         {prospects.map((p) => (
           <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={p.id === selectedId ? 11 : 8}
             eventHandlers={onSelect ? { click: () => onSelect(p.id) } : undefined}
-            pathOptions={{ color: COLORS.restaurant, weight: p.id === selectedId ? 4 : 3, fillColor: "#fff", fillOpacity: 1 }}>
+            pathOptions={{ color: COLORS.prospect, weight: p.id === selectedId ? 4 : 3, fillColor: "var(--panel)", fillOpacity: 1 }}>
             <Tooltip direction="top" offset={[0, -8]}><strong>{p.label}</strong>{p.detail ? <div>{p.detail}</div> : null}</Tooltip>
           </CircleMarker>
         ))}
         {reference && (
-          <CircleMarker center={[reference.lat, reference.lng]} radius={7} pathOptions={{ color: "#fff", weight: 2, fillColor: "#0e1a2b", fillOpacity: 1 }}>
+          <CircleMarker center={[reference.lat, reference.lng]} radius={7} pathOptions={{ color: "var(--ink)", weight: 2, fillColor: "var(--panel)", fillOpacity: 1 }}>
             <Tooltip direction="top" offset={[0, -8]} permanent><strong>{reference.label}</strong></Tooltip>
           </CircleMarker>
         )}
@@ -203,10 +253,10 @@ export default function MapView({
           {chips.map((c) => <span key={c} className="chip chip-accent">{c}</span>)}
         </div>
       )}
-      <div className="absolute bottom-2 left-2 z-[1000] flex flex-wrap gap-2 rounded-md bg-white/90 px-2 py-1 text-xs font-semibold text-ink-2">
-        {restaurants.length > 0 && <Legend color={COLORS.restaurant} label="Restaurant (demo partner)" />}
-        {prospects.length > 0 && <Legend color={COLORS.restaurant} label="Researched prospect, not a partner" ring />}
-        {(drivers.length > 0 || movers.length > 0) && <Legend color={COLORS.driver} label="Driver" />}
+      <div className="absolute bottom-2 left-2 z-[1000] flex flex-wrap gap-3 rounded-md border border-line bg-panel/90 px-3 py-1.5 text-xs font-semibold text-ink-2 backdrop-blur">
+        {restaurants.length > 0 && <Legend color={COLORS.restaurant} label="Restaurant" />}
+        {prospects.length > 0 && <Legend color={COLORS.prospect} label="Researched prospect, not a partner" ring />}
+        {(drivers.length > 0 || movers.length > 0) && <Legend color={DRIVER_COLOR.EN_ROUTE} label="Driver, live" />}
         {organizations.length > 0 && <Legend color={COLORS.org} label="Organization" />}
       </div>
     </div>
@@ -216,7 +266,7 @@ export default function MapView({
 function Legend({ color, label, ring = false }: { color: string; label: string; ring?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={ring ? { border: `3px solid ${color}`, background: "#fff" } : { background: color }} />
+      <i aria-hidden className="inline-block h-3 w-3 rounded-full" style={ring ? { border: `3px solid ${color}`, background: "var(--panel)" } : { background: color }} />
       {label}
     </span>
   );

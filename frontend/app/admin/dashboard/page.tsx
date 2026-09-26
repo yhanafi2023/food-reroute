@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
-import FlowMap, { type MapRoute, type Mover } from "@/components/FlowMap";
+import FlowMap, { type DriverState, type MapRoute, type Mover } from "@/components/FlowMap";
 import WhyThisMatch from "@/components/WhyThisMatch";
 import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
@@ -116,7 +116,11 @@ export default function AdminDashboardPage() {
         const need = data.needs.find((n) => n.organization_id === o.id);
         return { id: `o${o.id}`, lat: o.lat, lng: o.lng, label: o.name, detail: need ? `Needs ${need.meals_needed - need.meals_fulfilled} meals (${need.priority})` : o.org_type };
       }),
-      drivers: data.drivers.map((d) => ({ id: `d${d.id}`, lat: d.lat, lng: d.lng, label: d.name, detail: d.is_available ? "Available" : "On a delivery" })),
+      drivers: data.drivers.map((d) => ({
+        id: `d${d.id}`, lat: d.lat, lng: d.lng, label: d.name,
+        detail: d.is_available ? "Available" : "On a delivery",
+        status: (d.is_available ? "AVAILABLE" : "ON_DELIVERY") as DriverState,
+      })),
       routes: data.deliveries.map((d) => ({ id: `del${d.id}`, geometry: d.route.geometry, stops: d.stops.map((s) => ({ lat: s.lat, lng: s.lng, label: s.name })) })),
     };
   }, [data]);
