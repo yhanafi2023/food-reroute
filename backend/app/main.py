@@ -1,4 +1,6 @@
-"""FoodFlow API. Run from backend/: uvicorn app.main:app --reload --port 8000"""
+"""This file: FoodFlow API. Run from backend/: uvicorn app.main:app --reload --port 8000"""
+#libraries: Async- for asynchronus tasks(i.e., the scheduler.
+#logging- prints useful information to terminal
 import asyncio
 import logging
 from contextlib import asynccontextmanager
