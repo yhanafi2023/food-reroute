@@ -1,0 +1,407 @@
+{
+  "_about": "Researched surplus-food PROSPECTS in Miami-Dade County, centered on FIU Modesto A. Maidique Campus. These are NOT enrolled FoodFlow partners and NOT verified high-waste businesses. No record here claims a business discards food. Evidence levels: measured (business-specific quantity + reporting period), documented_donation (a food-rescue organization publicly names the business as a donor), marketplace_listing (a public surplus-marketplace listing exists), none_found (identity verified, no surplus evidence found). null means unknown. See DATA_SOURCES.md.",
+  "checked": "2026-09-26",
+  "reference_point": {
+    "name": "FIU Modesto A. Maidique Campus",
+    "address": "11200 SW 8th St, Miami, FL 33199",
+    "lat": 25.761086,
+    "lng": -80.376253,
+    "geocode_source": "U.S. Census Bureau Geocoder (Public_AR_Current)"
+  },
+  "prospects": [
+    {
+      "id": "sergios-fiu",
+      "name": "Sergio's (FIU location)",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "FIU campus",
+      "address": "1200 SW 8th Street, Miami, FL 33199",
+      "address_note": "Address exactly as published on sergios.com. ZIP 33199 is FIU's campus ZIP and FIU's street address is 11200 SW 8th St, so '1200' is probably a typo. The map pin uses the FIU campus address; confirm the exact building with the business.",
+      "lat": 25.761086,
+      "lng": -80.376253,
+      "geocode_source": "U.S. Census Bureau Geocoder, FIU campus address (see address_note)",
+      "contact": { "phone": "(305) 702-7211", "email": null, "website": "https://www.sergios.com/location/sergios-restaurant-sergios-fiu-cafe/" },
+      "hours": "Monday - Sunday 8:30 am - 9:30pm (as published)",
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Sergio's FIU location page (address, phone, hours; describes a fast-casual campus location)", "url": "https://www.sergios.com/location/sergios-restaurant-sergios-fiu-cafe/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "sergios-bird-road",
+      "name": "Sergio's Restaurant (Bird Road)",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "Westchester",
+      "address": "9330 SW 40th St, Miami, FL 33165",
+      "address_note": null,
+      "lat": 25.732782,
+      "lng": -80.346367,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "(305) 552-9626", "email": null, "website": "https://www.sergios.com/location/sergios-restaurant-bird-road/" },
+      "hours": "Sunday - Thursday 6:00 am - 10:00 pm; Friday & Saturday 6:00 am - 11:00 pm (as published)",
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Sergio's Bird Road location page", "url": "https://www.sergios.com/location/sergios-restaurant-bird-road/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "smoothie-spot-tamiami",
+      "name": "Smoothie Spot (Tamiami)",
+      "business_type": "Café / smoothie restaurant",
+      "neighborhood": "Tamiami",
+      "address": "13810 SW 8th St, Miami, FL 33184",
+      "address_note": null,
+      "lat": 25.760872,
+      "lng": -80.419165,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "(305) 456-7556", "email": null, "website": "https://smoothiespotmiami.com/" },
+      "hours": null,
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'Smoothie Spot Restaurant Tamiami | Too Good To Go in Miami' appears in search results. The listing page itself could not be read (bot checkpoint), so its contents, price and current availability are unverified. A listing shows the business has offered surplus bags; it does not show quantities or that food is discarded.",
+          "url": "https://www.toogoodtogo.com/en-us/find/miami/smoothiespotrestaurant/meal/mealsurprisebag-129638121437488897",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown. Surplus sold through resale is not available for donation.", "url": "https://www.toogoodtogo.com/en-us/find/miami/smoothiespotrestaurant/meal/mealsurprisebag-129638121437488897" }
+      ],
+      "sources": [
+        { "label": "Smoothie Spot official site (locations list with Tamiami address and phone)", "url": "https://smoothiespotmiami.com/", "checked": "2026-09-26", "how": "page read" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/miami/smoothiespotrestaurant/meal/mealsurprisebag-129638121437488897", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "karla-westchester",
+      "name": "Karla Cuban Bakery (Westchester)",
+      "business_type": "Bakery-café",
+      "neighborhood": "Westchester",
+      "address": "8754 SW 40th St, Miami, FL 33165",
+      "address_note": null,
+      "lat": 25.733026,
+      "lng": -80.337502,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "305-549-8198", "email": null, "website": "https://karlabakery.com/location/karla-cuban-bakery-westchester/" },
+      "hours": "Mon-Sat 6:45 AM - 6:00 PM; Sun 6:45 AM - 4:00 PM (as published)",
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'Karla Cuban Bakery Westchester Store | Too Good To Go in Miami' appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/miami/karlacubanbakery/bakedgoods/surpriseplatter-131593057969264321",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/miami/karlacubanbakery/bakedgoods/surpriseplatter-131593057969264321" }
+      ],
+      "sources": [
+        { "label": "Karla Cuban Bakery Westchester location page", "url": "https://karlabakery.com/location/karla-cuban-bakery-westchester/", "checked": "2026-09-26", "how": "page read" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/miami/karlacubanbakery/bakedgoods/surpriseplatter-131593057969264321", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "karla-doral",
+      "name": "Karla Cuban Bakery (Doral)",
+      "business_type": "Bakery-café",
+      "neighborhood": "Doral",
+      "address": "2000 NW 87th Ave unit 6, Doral, FL 33172",
+      "address_note": null,
+      "lat": 25.792645,
+      "lng": -80.336906,
+      "geocode_source": "U.S. Census Bureau Geocoder (street address match, unit not geocoded)",
+      "contact": { "phone": "(786) 745-1290", "email": null, "website": "https://karlabakery.com/location/karla-cuban-bakery-doral/" },
+      "hours": "Mon-Sat 7:00 AM - 5:30 PM; Sun 7:00 AM - 3:00 PM (as published)",
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'Karla Bakery Doral | Too Good To Go in Doral' appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/doral/karlabakery/bakedgoods/xlsurprisebag-131590633661559201",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/doral/karlabakery/bakedgoods/xlsurprisebag-131590633661559201" }
+      ],
+      "sources": [
+        { "label": "Karla Cuban Bakery Doral location page", "url": "https://karlabakery.com/location/karla-cuban-bakery-doral/", "checked": "2026-09-26", "how": "page read" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/doral/karlabakery/bakedgoods/xlsurprisebag-131590633661559201", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "mia-bakery-gourmet",
+      "name": "MIA Bakery Gourmet",
+      "business_type": "Bakery-café",
+      "neighborhood": "Doral",
+      "address": "2100 NW 107th Avenue, Suite 110, Miami, FL 33172",
+      "address_note": "Address from the business's own Toast online-ordering page title ('Mia Bakery Gourmet 2100 NW 107th Ave Unit 110'), seen in search results; the page itself returned HTTP 403 to our reader.",
+      "lat": 25.793537,
+      "lng": -80.369058,
+      "geocode_source": "U.S. Census Bureau Geocoder (street address match, suite not geocoded)",
+      "contact": { "phone": null, "email": null, "website": "https://www.instagram.com/miabakerygourmet/" },
+      "hours": null,
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'MIA BAKERY GOURMET | Too Good To Go in Miami' (baked goods surprise bag) appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/miami/miabakerygourmet/bakedgoods/bakedgoodssurprisebag-192277710314416513",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/miami/miabakerygourmet/bakedgoods/bakedgoodssurprisebag-192277710314416513" }
+      ],
+      "sources": [
+        { "label": "Toast online-ordering page (title seen in search index; page returned 403)", "url": "https://order.toasttab.com/online/mia-bakery-2100-nw-107th-ave-unit-110", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Instagram account @miabakerygourmet (not read)", "url": "https://www.instagram.com/miabakerygourmet/", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/miami/miabakerygourmet/bakedgoods/bakedgoodssurprisebag-192277710314416513", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "dolce-saturno-doral",
+      "name": "Dolce Saturno Bakery (Doral)",
+      "business_type": "Bakery-café",
+      "neighborhood": "Doral",
+      "address": "10740 NW 74th St, Doral, FL 33178",
+      "address_note": "Published as '10740 NW 74st Doral FL 33178'. A Too Good To Go listing places it under Medley.",
+      "lat": 25.840582,
+      "lng": -80.373374,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "305-594-6610", "email": "dolcesaturno@gmail.com", "website": "https://dolcesaturno.com/" },
+      "hours": "Mon-Fri 6:30 AM - 7:00 PM; Sat 7:00 AM - 7:00 PM; Sun 8:00 AM - 3:00 PM (as published)",
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'Dolce Saturno Bakery Doral | Too Good To Go in Medley' appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/medley/vickybakery/bakedgoods/bakedgoods-95449576612896961",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/medley/vickybakery/bakedgoods/bakedgoods-95449576612896961" }
+      ],
+      "sources": [
+        { "label": "Dolce Saturno contact page (address, phone, email, hours)", "url": "https://dolcesaturno.com/contact-us-2/", "checked": "2026-09-26", "how": "page read" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/medley/vickybakery/bakedgoods/bakedgoods-95449576612896961", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "cuban-guys-flagler",
+      "name": "Cuban Guys (W Flagler)",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "Fontainebleau / West Flagler",
+      "address": "8229 W Flagler St, Miami, FL 33144",
+      "address_note": null,
+      "lat": 25.769809,
+      "lng": -80.328855,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "(786) 535-4559", "email": null, "website": "https://cubanguysrestaurants.com/locations/" },
+      "hours": null,
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Cuban Guys locations page", "url": "https://cubanguysrestaurants.com/locations/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "cuban-guys-kendall",
+      "name": "Cuban Guys (Kendall)",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "Kendall",
+      "address": "10801 Sunset Dr, Miami, FL 33173",
+      "address_note": "Sunset Drive is SW 72nd St; geocoded as 10801 SW 72nd St.",
+      "lat": 25.701083,
+      "lng": -80.368055,
+      "geocode_source": "U.S. Census Bureau Geocoder (matched as 10801 SW 72nd St)",
+      "contact": { "phone": "(786) 882 9420", "email": null, "website": "https://cubanguysrestaurants.com/locations/" },
+      "hours": null,
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Cuban Guys locations page", "url": "https://cubanguysrestaurants.com/locations/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "sergios-kendall-107",
+      "name": "Sergio's Restaurant (Kendall 107th)",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "Kendall",
+      "address": "8807 SW 107th Ave, Miami, FL 33176",
+      "address_note": null,
+      "lat": 25.686849,
+      "lng": -80.36579,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "(305) 275-2880", "email": null, "website": "https://www.sergios.com/location/sergios-restaurant-kendall-107/" },
+      "hours": "Sunday - Thursday 6:00 am - 10:00 pm; Friday & Saturday 6:00 am - 11:00 pm (as published)",
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Sergio's Kendall 107th location page", "url": "https://www.sergios.com/location/sergios-restaurant-kendall-107/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "manhattan-chicago-kendall",
+      "name": "Manhattan Chicago Pizza (Kendall)",
+      "business_type": "Pizzeria",
+      "neighborhood": "Kendall",
+      "address": "10481 SW 88th St D-100, Miami, FL 33176",
+      "address_note": "Street address from third-party listings (Yelp, Slice, Grubhub); the official site shows the phone number but no street address. The Census geocoder matched the street with ZIP 33186.",
+      "lat": 25.687154,
+      "lng": -80.363331,
+      "geocode_source": "U.S. Census Bureau Geocoder (street match; ZIP returned 33186)",
+      "contact": { "phone": "305-595-5885", "email": null, "website": "https://manhattanchicagorestaurant.com" },
+      "hours": null,
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'Manhattan Chicago Pizzeria Kendall Kendall | Too Good To Go in Miami' appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/miami/manhattanchicagopizzeriakendall/meal/499surprisebag-72515209589386625",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/miami/manhattanchicagopizzeriakendall/meal/499surprisebag-72515209589386625" }
+      ],
+      "sources": [
+        { "label": "Official site (phone only)", "url": "https://manhattanchicagorestaurant.com", "checked": "2026-09-26", "how": "page read" },
+        { "label": "Yelp listing (street address, third party)", "url": "https://www.yelp.com/biz/manhattan-chicago-pizza-kendall-miami-2", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/miami/manhattanchicagopizzeriakendall/meal/499surprisebag-72515209589386625", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "bodeguita-coral-way",
+      "name": "Bodeguita Mercado Cafetería",
+      "business_type": "Cafetería & market",
+      "neighborhood": "Coral Way / Coral Terrace",
+      "address": "7403 Coral Way, Miami, FL 33155",
+      "address_note": "Coral Way is SW 24th St; geocoded as 7403 SW 24th St. Address and phone come from third-party listings (Uber Eats, Waze, search results); the business's Facebook page was not read.",
+      "lat": 25.748161,
+      "lng": -80.315674,
+      "geocode_source": "U.S. Census Bureau Geocoder (matched as 7403 SW 24th St)",
+      "contact": { "phone": "(305) 267-1144", "email": null, "website": "https://www.facebook.com/bodeguitamc/" },
+      "hours": null,
+      "evidence_strength": "marketplace_listing",
+      "evidence": [
+        {
+          "type": "marketplace_listing",
+          "summary": "A Too Good To Go listing titled 'BODEGUITA | Mercado Cafetería | Too Good To Go in Miami' (Cuban surprise bag) appears in search results. Listing page not readable (bot checkpoint); contents and current availability unverified. No quantities are known.",
+          "url": "https://www.toogoodtogo.com/en-us/find/miami/bodeguitamercadocafeteria/meal/cubansuprise-bringyourowncontainerforfood-62006062275910401",
+          "source_name": "Too Good To Go",
+          "checked": "2026-09-26",
+          "how": "search index only"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Too Good To Go (surplus resale)", "detail": "Listing found; volume unknown.", "url": "https://www.toogoodtogo.com/en-us/find/miami/bodeguitamercadocafeteria/meal/cubansuprise-bringyourowncontainerforfood-62006062275910401" }
+      ],
+      "sources": [
+        { "label": "Uber Eats store page (third party)", "url": "https://www.ubereats.com/store/bodeguita-mercado-cafeteria/ive3BzKSSOSWdGod8wATqA", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Waze place listing (address, third party)", "url": "https://www.waze.com/live-map/directions/us/fl/miami/bodeguita-or-mercado-cafeteria?to=place.ChIJhxuV_Vu42YgR58GOnadiayA", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Too Good To Go listing (title seen in search index)", "url": "https://www.toogoodtogo.com/en-us/find/miami/bodeguitamercadocafeteria/meal/cubansuprise-bringyourowncontainerforfood-62006062275910401", "checked": "2026-09-26", "how": "search index only" }
+      ]
+    },
+    {
+      "id": "versailles-little-havana",
+      "name": "Versailles Restaurant",
+      "business_type": "Cuban restaurant",
+      "neighborhood": "Little Havana",
+      "address": "3555 SW 8th Street, Miami, FL 33135",
+      "address_note": null,
+      "lat": 25.764816,
+      "lng": -80.25265,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match)",
+      "contact": { "phone": "305-444-0240", "email": null, "website": "https://www.versaillesrestaurant.com/" },
+      "hours": null,
+      "evidence_strength": "none_found",
+      "evidence": [],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [],
+      "sources": [
+        { "label": "Versailles official site (address, phone)", "url": "https://www.versaillesrestaurant.com/", "checked": "2026-09-26", "how": "page read" }
+      ]
+    },
+    {
+      "id": "macchialina",
+      "name": "Macchialina",
+      "business_type": "Italian restaurant",
+      "neighborhood": "Miami Beach",
+      "address": "820 Alton Road, Miami Beach, FL 33139",
+      "address_note": "The official site says 820 Alton Road. The Michelin Guide listing, Toast ordering page and Miami & Beaches visitor bureau list 810 Alton Road. Pinned at 820 (official); confirm with the business.",
+      "lat": 25.778428,
+      "lng": -80.140906,
+      "geocode_source": "U.S. Census Bureau Geocoder (exact address match, 820 Alton Rd)",
+      "contact": { "phone": "305.534.2124", "email": "info@macchialina.com", "website": "https://www.macchialina.com/" },
+      "hours": "Open daily for dinner (as published)",
+      "evidence_strength": "documented_donation",
+      "evidence": [
+        {
+          "type": "documented_donation",
+          "summary": "Food Rescue US - South Florida's Give Miami Day profile says: \"Food donors include ... restaurants like MILA, Papi Steak, Macchialina and CHŌ.\" The page gives no date for this statement and no quantities, frequency or period for Macchialina.",
+          "url": "https://www.givemiamiday.org/organization/Food-Rescue-Us-South-Florida",
+          "source_name": "Give Miami Day (Food Rescue US - South Florida profile)",
+          "checked": "2026-09-26",
+          "how": "page read"
+        }
+      ],
+      "surplus_measurement": null,
+      "pickup_frequency": null,
+      "existing_commitments": [
+        { "program": "Food Rescue US - South Florida", "detail": "Named as a food donor; current status, frequency and volume unknown. Coordinate with Food Rescue US before any outreach so FoodFlow does not compete for the same food.", "url": "https://www.givemiamiday.org/organization/Food-Rescue-Us-South-Florida" }
+      ],
+      "sources": [
+        { "label": "Macchialina official site (address, phone, email)", "url": "https://www.macchialina.com/", "checked": "2026-09-26", "how": "page read" },
+        { "label": "MICHELIN Guide listing (lists 810 Alton Road)", "url": "https://guide.michelin.com/us/en/florida/miami-beach/restaurant/macchialina", "checked": "2026-09-26", "how": "search index only" },
+        { "label": "Give Miami Day: Food Rescue US - South Florida profile", "url": "https://www.givemiamiday.org/organization/Food-Rescue-Us-South-Florida", "checked": "2026-09-26", "how": "page read" }
+      ]
+    }
+  ]
+}

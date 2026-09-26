@@ -33,7 +33,9 @@ def test_full_demo_flow(client):
     rest, drv, org, shelter, admin = (login(client, e) for e in (
         "restaurant@demo.com", "driver@demo.com", "org@demo.com", "shelter@demo.com", "admin@demo.com"))
     before = client.get("/impact").json()
-    assert before["includes_demo_data"] is True
+    assert before["includes_demo_data"] is False  # public impact counts only real deliveries
+    assert before["meals_rescued"] == 0
+    assert client.get("/impact?include_demo=true").json()["includes_demo_data"] is True
 
     r = client.post("/rescues", json={**RESCUE, "pickup_deadline": future()}, headers=rest)
     assert r.status_code == 200, r.text
@@ -160,7 +162,7 @@ def test_admin_batch_matching_simulation_and_ml(client):
     assert len(first["stops"]) == 2
 
     forecast = client.get("/ml/forecast", headers=admin).json()
-    assert len(forecast["forecast"]) == 6 and "synthetic" in forecast["label"]
+    assert forecast["available"] is False and forecast["forecast"] == []  # no synthetic predictions served
     assert client.get("/ml/info").json()["data"] == "prototype trained on synthetic data"
     p = client.post("/ml/predict", json={"day_of_week": 5, "hour": 21, "food_category": "buffet"}, headers=admin).json()
     assert 0 <= p["probability"] <= 1

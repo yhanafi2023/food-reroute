@@ -9,10 +9,10 @@ Index notes (see README for the Postgres/PostGIS version):
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -56,6 +56,7 @@ class Restaurant(Base):
     food_category: Mapped[str] = mapped_column(String(40), default="cuban")
     seats: Mapped[int] = mapped_column(Integer, default=80)
     hist_surplus_rate: Mapped[float] = mapped_column(Float, default=0.3)
+    is_demo_seed: Mapped[bool] = mapped_column(Boolean, default=False)  # fictional demo partner
 
 
 class Driver(Base):
@@ -73,6 +74,9 @@ class Driver(Base):
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     capacity_meals: Mapped[int] = mapped_column(Integer, default=80)
     vehicle: Mapped[str] = mapped_column(String(60), default="Car")
+    # "seed", "status" (moved when a status changed) or "gps" (shared from the driver's phone)
+    location_source: Mapped[str] = mapped_column(String(10), default="seed")
+    location_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class Organization(Base):
@@ -151,6 +155,9 @@ class Match(Base):
     pickup_miles: Mapped[float] = mapped_column(Float)
     dropoff_miles: Mapped[float] = mapped_column(Float)
     eta_minutes: Mapped[float] = mapped_column(Float)
+    eta_range_minutes: Mapped[list] = mapped_column(JSON, default=list)  # [P10, P90] from the ETA model
+    pickup_eta_minutes: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    eta_source: Mapped[str] = mapped_column(String(10), default="rule")
     score: Mapped[float] = mapped_column(Float)
     reasons: Mapped[list] = mapped_column(JSON, default=list)
     top_candidates: Mapped[list] = mapped_column(JSON, default=list)
@@ -221,4 +228,57 @@ class ImpactEvent(Base):
     weight_lbs: Mapped[float] = mapped_column(Float, default=0)
     delivery_minutes: Mapped[float] = mapped_column(Float, default=0)
     is_demo_seed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+DISPOSITIONS = ("discarded", "composted", "donated", "sold_discounted", "staff_meal", "no_surplus")
+
+
+class SurplusLog(Base):
+    """One day of the seven-day kitchen surplus log.
+
+    Belongs to either a researched prospect (entered by an admin from what the
+    business reports) or an enrolled restaurant (entered by its own staff).
+    Quantities are self-reported, and labeled that way everywhere they appear.
+    """
+
+    __tablename__ = "surplus_logs"
+    __table_args__ = (
+        CheckConstraint("(prospect_id IS NULL) != (restaurant_id IS NULL)", name="ck_surplus_logs_owner"),
+        CheckConstraint("surplus_meals >= 0", name="ck_surplus_logs_meals"),
+        CheckConstraint("surplus_lbs >= 0", name="ck_surplus_logs_lbs"),
+        CheckConstraint(_in("disposition", DISPOSITIONS), name="ck_surplus_logs_disposition"),
+        UniqueConstraint("prospect_id", "log_date", name="uq_surplus_logs_prospect_day"),
+        UniqueConstraint("restaurant_id", "log_date", name="uq_surplus_logs_restaurant_day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prospect_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
+    restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id", ondelete="CASCADE"), nullable=True, index=True)
+    log_date: Mapped[date] = mapped_column(Date)
+    surplus_meals: Mapped[int] = mapped_column(Integer, default=0)
+    surplus_lbs: Mapped[float] = mapped_column(Float, default=0)
+    safe_to_donate: Mapped[bool] = mapped_column(Boolean, default=False)
+    disposition: Mapped[str] = mapped_column(String(20), default="no_surplus")
+    food_categories: Mapped[str] = mapped_column(String(200), default="")
+    ready_time: Mapped[str] = mapped_column(String(20), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    reported_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TripLeg(Base):
+    """A driving leg with its real duration, logged for retraining the ETA model."""
+
+    __tablename__ = "trip_legs"
+    __table_args__ = (CheckConstraint("actual_minutes >= 0", name="ck_trip_legs_minutes"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_id: Mapped[int] = mapped_column(ForeignKey("deliveries.id", ondelete="CASCADE"), index=True)
+    leg_index: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    ended_at: Mapped[datetime] = mapped_column(DateTime)
+    actual_minutes: Mapped[float] = mapped_column(Float)
+    predicted_p50: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    features: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

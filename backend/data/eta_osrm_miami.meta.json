@@ -1,0 +1,28 @@
+{
+ "source": "OSRM table service, car profile, public demo server",
+ "server": "https://router.project-osrm.org",
+ "map_data": "OpenStreetMap contributors (ODbL)",
+ "fetched": "2026-09-26",
+ "requests": [
+  {
+   "batch": 0,
+   "points": 100,
+   "fetched_at": "2026-09-26T06:05:11+00:00"
+  },
+  {
+   "batch": 1,
+   "points": 100,
+   "fetched_at": "2026-09-26T06:05:13+00:00"
+  },
+  {
+   "batch": 2,
+   "points": 100,
+   "fetched_at": "2026-09-26T06:05:16+00:00"
+  }
+ ],
+ "pairs": 27172,
+ "snap_limit_meters": 300,
+ "anchors": "FIU campus address and the researched prospect locations in miami_prospects.json",
+ "sample_points": "seeded (seed 11) random points in lat 25.66-25.87, lng -80.45 to -80.25, plus Miami Beach",
+ "limitations": "Free-flow road-network times; no live or historical traffic; not observed trips."
+}

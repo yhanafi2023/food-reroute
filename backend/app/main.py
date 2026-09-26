@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import intelligence
 from app.config import CORS_ORIGINS, DEMO_MODE
 from app.db import Base, engine
+from app.intelligence.eta.model import ensure_eta_model
 from app.logistics.routing import provider
-from app.routes import admin, auth_routes, dashboards, deliveries, rescues
+from app.routes import admin, auth_routes, dashboards, deliveries, prospects, rescues, tracking_routes
 from app.seed import seed_if_empty
 
 
@@ -19,6 +20,7 @@ async def lifespan(_app: FastAPI):
     else:
         Base.metadata.create_all(engine)
     intelligence.ensure_model()
+    ensure_eta_model()
     yield
 
 
@@ -26,7 +28,7 @@ app = FastAPI(title="FoodFlow API", description="Good Food. Greater Impact.", li
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["*"], allow_headers=["*"])
 
-for module in (auth_routes, rescues, deliveries, dashboards, admin):
+for module in (auth_routes, rescues, deliveries, dashboards, admin, prospects, tracking_routes):
     app.include_router(module.router)
 
 

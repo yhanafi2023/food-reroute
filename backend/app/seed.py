@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.auth import hash_password
@@ -20,14 +21,16 @@ from app.models import (
 
 DEMO_PASSWORD = "demo1234"
 
+# FICTIONAL demo partners. Names and locations are made up for the demo and are kept
+# separate from the researched Miami prospects in data/miami_prospects.json.
 # name, email, food_category, seats, hist_surplus_rate, lat, lng, address
 RESTAURANTS = [
-    ("ABC Restaurant", "restaurant@demo.com", "cuban", 90, 0.35, 25.7635, -80.3680, "10780 SW 8th St, Miami, FL"),
-    ("Sunrise Bakery", "bakery@demo.com", "bakery", 40, 0.45, 25.7702, -80.3405, "9500 W Flagler St, Miami, FL"),
-    ("Bayside Buffet", "buffet@demo.com", "buffet", 200, 0.55, 25.7330, -80.3830, "11400 SW 40th St, Miami, FL"),
-    ("Tamiami Pizza", "pizza@demo.com", "pizza", 70, 0.25, 25.7612, -80.3302, "8900 SW 8th St, Miami, FL"),
-    ("Coral Deli", "deli@demo.com", "deli", 50, 0.20, 25.7510, -80.3955, "12000 SW 18th St, Miami, FL"),
-    ("Sweetwater Sushi", "sushi@demo.com", "sushi", 60, 0.10, 25.7790, -80.3760, "10700 NW 7th St, Sweetwater, FL"),
+    ("ABC Restaurant", "restaurant@demo.com", "cuban", 90, 0.35, 25.7635, -80.3680, "Demo location near FIU (fictional business)"),
+    ("Sunrise Bakery", "bakery@demo.com", "bakery", 40, 0.45, 25.7702, -80.3405, "Demo location near FIU (fictional business)"),
+    ("Bayside Buffet", "buffet@demo.com", "buffet", 200, 0.55, 25.7330, -80.3830, "Demo location near FIU (fictional business)"),
+    ("Tamiami Pizza", "pizza@demo.com", "pizza", 70, 0.25, 25.7612, -80.3302, "Demo location near FIU (fictional business)"),
+    ("Coral Deli", "deli@demo.com", "deli", 50, 0.20, 25.7510, -80.3955, "Demo location near FIU (fictional business)"),
+    ("Sweetwater Sushi", "sushi@demo.com", "sushi", 60, 0.10, 25.7790, -80.3760, "Demo location near FIU (fictional business)"),
 ]
 # name, email, lat, lng, capacity_meals, vehicle
 DRIVERS = [
@@ -39,10 +42,10 @@ DRIVERS = [
 ]
 # name, email, org_type, lat, lng, address, meals_needed, priority, preferred_food, hours_to_deadline
 ORGANIZATIONS = [
-    ("Community Food Bank", "org@demo.com", "Food bank", 25.7480, -80.3500, "9800 SW 24th St, Miami, FL", 30, "HIGH", "Any", 6),
-    ("Hope Shelter", "shelter@demo.com", "Shelter", 25.7700, -80.3550, "9900 W Flagler St, Miami, FL", 20, "MEDIUM", "Hot meals", 6),
-    ("Westchester Church Pantry", "church@demo.com", "Church pantry", 25.7400, -80.3350, "8700 SW 32nd St, Miami, FL", 25, "LOW", "Any", 8),
-    ("FIU Student Pantry", "pantry@demo.com", "School pantry", 25.7545, -80.3790, "11200 SW 8th St, Miami, FL", 15, "LOW", "Packaged", 8),
+    ("Community Food Bank", "org@demo.com", "Food bank", 25.7480, -80.3500, "Demo location near FIU (fictional business)", 30, "HIGH", "Any", 6),
+    ("Hope Shelter", "shelter@demo.com", "Shelter", 25.7700, -80.3550, "Demo location near FIU (fictional business)", 20, "MEDIUM", "Hot meals", 6),
+    ("Westchester Church Pantry", "church@demo.com", "Church pantry", 25.7400, -80.3350, "Demo location near FIU (fictional business)", 25, "LOW", "Any", 8),
+    ("FIU Student Pantry", "pantry@demo.com", "School pantry", 25.7545, -80.3790, "Demo location near FIU (fictional business)", 15, "LOW", "Packaged", 8),
 ]
 ADMIN = ("FoodFlow Admin", "admin@demo.com")
 
@@ -68,7 +71,7 @@ def seed(db: Session) -> None:
     restaurants = {}
     for name, email, cat, seats, hist, lat, lng, addr in RESTAURANTS:
         r = Restaurant(user_id=user(name, email, "RESTAURANT").id, name=name, address=addr, lat=lat, lng=lng,
-                       food_category=cat, seats=seats, hist_surplus_rate=hist)
+                       food_category=cat, seats=seats, hist_surplus_rate=hist, is_demo_seed=True)
         db.add(r)
         restaurants[name] = r
     drivers = {}
@@ -135,7 +138,24 @@ def reset_database() -> None:
         seed(db)
 
 
+def schema_is_current() -> bool:
+    """True when every model column exists in the database (new columns need a rebuild)."""
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in tables:
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        if not {c.name for c in table.columns} <= have:
+            return False
+    return True
+
+
 def seed_if_empty() -> None:
+    """Demo mode startup: rebuild an out-of-date demo database, then seed it if empty."""
+    if not schema_is_current():
+        reset_database()
+        return
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         if db.query(User).first() is None:

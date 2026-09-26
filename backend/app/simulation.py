@@ -81,11 +81,12 @@ def build_simulation(seed: int = SEED) -> Dict[str, Any]:
         driver = next(d for d in drivers if d["id"] == match["driver"]["id"])
         route = get_route([(driver["lat"], driver["lng"]), (rest["lat"], rest["lng"])]
                           + [(s["lat"], s["lng"]) for s in match["stops"]])
-        trip = route["eta_minutes"]
+        trip = match["eta_minutes"]  # ML ETA (real OSRM road-network times + assumed handling), same as live matching
         t_done = t_match + trip
         events.append({
             "t_ms": _ms(t_match), "clock": _clock(t_match), "type": "matched", "rescue_id": i,
             "driver": match["driver"], "stops": match["stops"], "route": route, "reasons": match["reasons"],
+            "eta_range_minutes": match["eta_range_minutes"],
             "eta_minutes": trip, "duration_ms": _ms(trip),
         })
         events.append({"t_ms": _ms(t_done), "clock": _clock(t_done), "type": "delivered", "rescue_id": i,
