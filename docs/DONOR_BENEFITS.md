@@ -49,7 +49,8 @@ FMV $120, basis $36, enhanced deduction **$72**, extra benefit vs throwing it aw
 **$8** (from $7.56, displayed in whole dollars).
 
 Demo Grill Norte's donations went to a fictional community fridge that is not a 501(c)(3), so its report lists them
-as "not included in tax estimate: recipient not verified", and its headline shows $0.
+as "not included in tax estimate: recipient not verified", and its headline says "No estimate yet" and why
+instead of showing $0.
 
 ## The 15% cap and carryforward
 

@@ -247,7 +247,7 @@ def donor_tax_summary(year: int = Query(ge=2015, le=2100), format: Literal["json
         f"  {sub['recipient']} (EIN {sub['ein']}): {sub['lines']} lines, FMV {_fmt(sub['fmv'])}, basis {_fmt(sub['basis'])}, "
         f"enhanced deduction {_fmt(sub['enhanced_deduction'])}{'' if sub['included_in_estimate'] else ' (not included: recipient not verified)'}"
         for sub in s["subtotals"]]
-    lines += ["", f"Estimated enhanced deduction (verified recipients): {_fmt(t['enhanced_deduction'])}",
+    lines += ["", f"Estimated enhanced deduction (verified recipients): {_fmt(t['enhanced_deduction']) or t['enhanced_deduction_note']}",
               f"Extra deduction vs throwing it away: {_fmt(t['extra_benefit_vs_discarding']) or t['extra_benefit_note']}",
               f"Estimated tax saved: {_fmt(t['estimated_tax_saved']) or 'enter your tax rate to see this'}",
               f"Total basis of donated inventory: {_fmt(t['total_basis_donated'])} ({t['total_basis_label']})",

@@ -133,9 +133,15 @@ def test_unverified_recipients_are_excluded(client):
     s = summary(client, mgr)
     assert s["lines"][0]["included"] is False
     assert s["lines"][0]["reason"] == "not included in tax estimate: recipient not verified"
-    assert s["totals"]["enhanced_deduction"] == 0.0 and s["counts"]["not_verified_recipient_lines"] == 1
-    head = client.get("/restaurants/me/benefits", headers=mgr).json()["headline"]
-    assert head["value"] == 0 and head["note"] == ""  # nothing to a verified recipient yet, not an "ask your preparer" case
+    # Not $0 (reads as "donating is worth nothing") and not "ask your preparer": say it isn't estimated yet, and why.
+    assert s["totals"]["enhanced_deduction"] is None and s["totals"]["extra_benefit_vs_discarding"] is None
+    assert s["totals"]["enhanced_deduction_note"] == calc.NOT_VERIFIED
+    assert s["counts"]["not_verified_recipient_lines"] == 1
+    dash = client.get("/restaurants/me/benefits", headers=mgr).json()
+    assert dash["headline"]["value"] is None and dash["headline"]["note"] == calc.NOT_VERIFIED
+    assert dash["enhanced_deduction_estimate"] is None and dash["enhanced_deduction_note"] == calc.NOT_VERIFIED
+    pdf_text = client.get("/reports/donor-tax-summary?year=%d&format=pdf" % s["year"], headers=mgr)
+    assert pdf_text.status_code == 200
 
 
 def test_needs_valuation_then_valued(client):

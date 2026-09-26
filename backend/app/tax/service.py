@@ -164,10 +164,21 @@ def summary(db: Session, restaurant_id: int, year: int, lines: Optional[List[Dic
     total_ded = sum((Decimal(str(l["enhanced_deduction"])) for l in included), Decimal(0))
     extras = [Decimal(str(l["extra_benefit_vs_discarding"])) for l in included if l["extra_benefit_vs_discarding"] is not None]
     extra_applies = profile.keeps_inventory and not uses_election(profile)
-    if not extra_applies or (included and not extras):
-        total_extra = None  # election, no inventory, or FMV <= basis: ask the preparer
+    # Donations exist but none can be estimated yet: say why instead of showing $0.
+    no_estimate_note = ""
+    if lines and not included:
+        reasons = []
+        if any(not l["recipient_verified"] and not l["needs_valuation"] for l in lines):
+            reasons.append(calc.NOT_VERIFIED)
+        if any(l["needs_valuation"] for l in lines):
+            reasons.append(calc.NEEDS_VALUATION)
+        no_estimate_note = " ".join(reasons)
+    if no_estimate_note:
+        total_extra, extra_note = None, no_estimate_note
+    elif not extra_applies or (included and not extras):
+        total_extra, extra_note = None, calc.ASK_PREPARER  # election, no inventory, or FMV <= basis
     else:
-        total_extra = sum(extras, Decimal(0))  # 0 when nothing reached a verified recipient yet
+        total_extra, extra_note = sum(extras, Decimal(0)), ""
     total_basis = sum((Decimal(str(l["basis"])) for l in lines if l.get("basis") is not None), Decimal(0))
     per_recipient: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"lines": 0, "fmv": Decimal(0), "basis": Decimal(0),
                                                                   "enhanced_deduction": Decimal(0), "included": True})
@@ -192,10 +203,12 @@ def summary(db: Session, restaurant_id: int, year: int, lines: Optional[List[Dic
                        "basis": float(v["basis"]), "enhanced_deduction": float(v["enhanced_deduction"]),
                        "included_in_estimate": v["included"]} for k, v in per_recipient.items()],
         "totals": {
-            "enhanced_deduction": float(calc.money(total_ded)), "enhanced_deduction_display": calc.dollars(total_ded),
+            "enhanced_deduction": None if no_estimate_note else float(calc.money(total_ded)),
+            "enhanced_deduction_display": None if no_estimate_note else calc.dollars(total_ded),
+            "enhanced_deduction_note": no_estimate_note,
             "extra_benefit_vs_discarding": float(total_extra) if total_extra is not None else None,
             "extra_benefit_display": calc.dollars(total_extra) if total_extra is not None else None,
-            "extra_benefit_note": "" if total_extra is not None else calc.ASK_PREPARER,
+            "extra_benefit_note": extra_note,
             "estimated_tax_saved": float(saved) if saved is not None else None,
             "estimated_tax_saved_display": calc.dollars(saved) if saved is not None else None,
             "total_basis_donated": float(calc.money(total_basis)), "total_basis_display": calc.dollars(total_basis),
@@ -238,6 +251,7 @@ def dashboard(db: Session, restaurant_id: int, year: int) -> Dict[str, Any]:
         "estimated_tax_savings_note": ("from the tax rate you entered" if s["totals"]["estimated_tax_saved_display"] is not None
                                        else "enter your own tax rate to see estimated tax savings; FoodFlow never assumes one"),
         "enhanced_deduction_estimate": s["totals"]["enhanced_deduction_display"],
+        "enhanced_deduction_note": s["totals"]["enhanced_deduction_note"],
         "meals_donated": meals, "pounds_diverted": lbs, "pounds_method": "meals x 1.2 lbs (Feeding America)",
         "unsigned_acknowledgments": s["counts"]["unsigned_acknowledgments"],
         "items_needing_valuation": s["counts"]["needs_valuation"],

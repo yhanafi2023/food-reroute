@@ -24,6 +24,9 @@ ELECTION_FRACTION = Decimal("0.25")
 CAP_FRACTION = Decimal("0.15")
 CARRYFORWARD_YEARS = 5
 ASK_PREPARER = "Ask your tax preparer how this interacts with your expensed costs."
+NOT_VERIFIED = ("No estimate yet: your donations went to organizations not yet verified as 501(c)(3). "
+                "It will appear once they are verified.")
+NEEDS_VALUATION = "No estimate yet: add prices and food costs for your donated items to see this."
 DISCLAIMER = "Estimates and records for your tax preparer. Not tax advice."
 
 
