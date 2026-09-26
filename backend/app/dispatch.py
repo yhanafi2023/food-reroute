@@ -279,7 +279,7 @@ def _reason(db, rescue: Rescue, plan: TripPlan, vol_why: Dict[str, int], av_note
 
 def create_trip(db: Session, rescue: Rescue, plan: TripPlan, estimated: bool, vol_why, av_note, alloc_source) -> Trip:
     now = clock.now()
-    trip = Trip(rescue_id=rescue.id, mode=plan.mode, simulated=plan.mode != "volunteer",
+    trip = Trip(rescue=rescue, mode=plan.mode, simulated=plan.mode != "volunteer",
                 volunteer_user_id=plan.volunteer.id if plan.volunteer else None, status="matched",
                 mode_reason=_reason(db, rescue, plan, vol_why, av_note, now), estimated=estimated or plan.estimated,
                 eta_pickup_at=plan.eta_pickup, totes_used=plan.totes, is_fictional=rescue.is_fictional, created_at=now,

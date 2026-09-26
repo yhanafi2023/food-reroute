@@ -72,7 +72,12 @@ def set_trip_status(db: Session, trip: Trip, to: str, actor: Optional[User], lat
 
 
 def active_trips(rescue: Rescue) -> List[Trip]:
-    return [t for t in rescue.trips if t.status not in INACTIVE_TRIP]
+    """Read fresh from the database: trips created after the rescue was loaded must count."""
+    from sqlalchemy.orm import object_session
+
+    db = object_session(rescue)
+    trips = db.query(Trip).filter_by(rescue_id=rescue.id).order_by(Trip.id).all() if db else rescue.trips
+    return [t for t in trips if t.status not in INACTIVE_TRIP]
 
 
 def sync_rescue(db: Session, rescue: Rescue, actor: Optional[User] = None) -> None:
