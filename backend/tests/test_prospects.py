@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app import prospects
 from app.main import app
 from app.seed import reset_database
+from tests.helpers import EMAILS, signin
 
 URL = re.compile(r"^https://")
 CHECKED = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -15,14 +16,13 @@ CHECKED = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 @pytest.fixture()
 def client():
-    reset_database()
+    reset_database(with_scenarios=False)
     with TestClient(app) as c:
         yield c
 
 
 def auth(client, email):
-    token = client.post("/auth/login", json={"email": email, "password": "demo1234"}).json()["token"]
-    return {"Authorization": f"Bearer {token}"}
+    return signin(client, {"restaurant@demo.com": EMAILS["restaurant_staff"], "admin@demo.com": EMAILS["admin"]}[email])
 
 
 def test_every_prospect_is_sourced_and_honest():
@@ -128,4 +128,4 @@ def test_log_validation_and_restaurant_self_logging(client):
     assert mine["summary"]["complete"] and mine["summary"]["recoverable_meals"] == 56
     ranked = client.get("/prospects/opportunities", headers=admin).json()["ranked"]
     partner = next(r for r in ranked if r["kind"] == "enrolled_partner")
-    assert partner["is_demo"] is True  # the seeded restaurant is a fictional demo partner
+    assert partner["is_demo"] is True and partner["name"] == "Casa Demo Cocina"  # fictional demo partner

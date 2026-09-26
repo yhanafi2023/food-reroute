@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from sqlalchemy.orm import Session
 
 from app.logistics.geo import haversine_miles
-from app.models import Restaurant, SurplusLog
+from app.models import Organization, SurplusLog
 
 DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "miami_prospects.json"
 EVIDENCE_LEVELS = ("measured", "documented_donation", "marketplace_listing", "none_found")
@@ -193,13 +193,13 @@ def rank_opportunities(db: Session) -> Dict[str, Any]:
         ranked.append({**opp, "id": p["id"], "kind": "prospect", "miles_from_fiu": p["miles_from_fiu"],
                        "is_demo": False})
     ref = reference_point()
-    for r in db.query(Restaurant).all():
+    for r in db.query(Organization).filter_by(kind="restaurant").all():
         summary = summarize_log(log_entries(db, restaurant_id=r.id))
         if not summary["complete"]:
             continue
         opp = opportunity(r.name, summary, None, [])
         if opp and opp["recoverable_meals_per_week"] > 0:
-            ranked.append({**opp, "id": f"restaurant-{r.id}", "kind": "enrolled_partner", "is_demo": r.is_demo_seed,
+            ranked.append({**opp, "id": f"restaurant-{r.id}", "kind": "enrolled_partner", "is_demo": r.is_fictional,
                            "miles_from_fiu": round(haversine_miles(ref["lat"], ref["lng"], r.lat, r.lng), 2)})
     ranked.sort(key=lambda o: (bool(o["existing_commitments"]), -o["recoverable_meals_per_week"],
                                o["pickups_per_week"] or 99))

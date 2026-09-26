@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app import prospects
-from app.auth import require_role, restaurant_of
+from app.auth import require_role
 from app.db import get_db
 from app.models import SurplusLog, User
 
@@ -48,14 +48,14 @@ def _log_payload(db: Session, prospect_id: Optional[str] = None, restaurant_id: 
 
 
 @router.get("/prospects/meta")
-def prospects_meta(user: User = Depends(require_role("ADMIN"))):
+def prospects_meta(user: User = Depends(require_role("admin"))):
     return prospects.facets()
 
 
 @router.get("/prospects")
 def list_prospects(q: str = "", neighborhood: str = "", business_type: str = "",
                    evidence: List[str] = Query(default=[]), max_miles: Optional[float] = Query(default=None, gt=0),
-                   user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+                   user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
     items = prospects.filter_prospects(q, neighborhood, business_type, evidence, max_miles)
     for p in items:
         p["log_summary"] = prospects.summarize_log(prospects.log_entries(db, prospect_id=p["id"]))
@@ -63,12 +63,12 @@ def list_prospects(q: str = "", neighborhood: str = "", business_type: str = "",
 
 
 @router.get("/prospects/opportunities")
-def opportunities(user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+def opportunities(user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
     return prospects.rank_opportunities(db)
 
 
 @router.get("/prospects/{prospect_id}")
-def get_prospect(prospect_id: str, user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+def get_prospect(prospect_id: str, user: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
     p = prospects.get_prospect(prospect_id)
     if p is None:
         raise HTTPException(404, "Prospect not found")
@@ -76,7 +76,7 @@ def get_prospect(prospect_id: str, user: User = Depends(require_role("ADMIN")), 
 
 
 @router.put("/prospects/{prospect_id}/surplus-log")
-def log_prospect_day(prospect_id: str, body: LogEntryIn, user: User = Depends(require_role("ADMIN")),
+def log_prospect_day(prospect_id: str, body: LogEntryIn, user: User = Depends(require_role("admin")),
                      db: Session = Depends(get_db)):
     if prospects.get_prospect(prospect_id) is None:
         raise HTTPException(404, "Prospect not found")
@@ -85,7 +85,7 @@ def log_prospect_day(prospect_id: str, body: LogEntryIn, user: User = Depends(re
 
 
 @router.delete("/prospects/{prospect_id}/surplus-log/{entry_id}")
-def delete_prospect_day(prospect_id: str, entry_id: int, user: User = Depends(require_role("ADMIN")),
+def delete_prospect_day(prospect_id: str, entry_id: int, user: User = Depends(require_role("admin")),
                         db: Session = Depends(get_db)):
     entry = db.get(SurplusLog, entry_id)
     if entry is None or entry.prospect_id != prospect_id:
@@ -96,12 +96,12 @@ def delete_prospect_day(prospect_id: str, entry_id: int, user: User = Depends(re
 
 
 @router.get("/restaurants/me/surplus-log")
-def my_log(user: User = Depends(require_role("RESTAURANT")), db: Session = Depends(get_db)):
-    return _log_payload(db, restaurant_id=restaurant_of(db, user).id)
+def my_log(user: User = Depends(require_role("restaurant_staff", "restaurant_manager")), db: Session = Depends(get_db)):
+    return _log_payload(db, restaurant_id=user.organization_id)
 
 
 @router.put("/restaurants/me/surplus-log")
-def log_my_day(body: LogEntryIn, user: User = Depends(require_role("RESTAURANT")), db: Session = Depends(get_db)):
-    restaurant = restaurant_of(db, user)
-    prospects.upsert_entry(db, body.model_dump(), user.id, restaurant_id=restaurant.id)
-    return _log_payload(db, restaurant_id=restaurant.id)
+def log_my_day(body: LogEntryIn, user: User = Depends(require_role("restaurant_staff", "restaurant_manager")),
+               db: Session = Depends(get_db)):
+    prospects.upsert_entry(db, body.model_dump(), user.id, restaurant_id=user.organization_id)
+    return _log_payload(db, restaurant_id=user.organization_id)

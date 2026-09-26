@@ -1,150 +1,197 @@
-"""Demo seed: Miami, near FIU. Loaded when DEMO_MODE=true and the database is empty.
+"""Demo seed. EVERY NAME, ADDRESS, EIN AND ACCOUNT HERE IS FICTIONAL.
 
-Logins (password demo1234): restaurant@demo.com (ABC Restaurant), driver@demo.com
-(Marcus), org@demo.com (Community Food Bank), shelter@demo.com (Hope Shelter),
-admin@demo.com. The other demo accounts use the emails listed below.
+Demo sign-in (only while DEMO_MODE=true): request a code for any email below, or
+use DEMO_CODE directly with POST /auth/verify.
 
-  python -m app.seed          (from backend/) resets the database to this state
+  restaurant_staff    staff@casa-demo.example.com (Casa Demo Cocina)
+  restaurant_manager  manager@casa-demo.example.com (Casa Demo Cocina)
+  volunteer           marcus@volunteer-demo.example.com (Marcus)
+  org_staff           staff@shelter-demo.example.com (Demo Night Shelter)
+  org_manager         manager@shelter-demo.example.com (Demo Night Shelter)
+  admin               admin@foodflow-demo.example.com
+
+  python -m app.seed      (from backend/) resets the database to this state
+
+Scenario history (completed rescue, no-show, partial acceptance, late-night
+simulated AV delivery, missed AV window with volunteer fallback) is created by
+running the real services under a fake clock: see app/demo_scenarios.py.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from typing import Dict
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password
-from app.db import Base, SessionLocal, engine
-from app.models import (
-    Delivery, Driver, FoodNeed, FoodRescue, ImpactEvent, Match, MatchStop, Organization, Restaurant, User, utcnow,
-)
+from app import clock, intake
+from app.db import Base, SessionLocal, create_schema, drop_schema, engine
+from app.models import Organization, ReceiverProfile, RestaurantProfile, User, VolunteerProfile
 
-DEMO_PASSWORD = "demo1234"
+DEMO_CODE = "246810"  # demo accounts only, DEMO_MODE only
+DAYS = intake.WEEKDAYS
 
-# FICTIONAL demo partners. Names and locations are made up for the demo and are kept
-# separate from the researched Miami prospects in data/miami_prospects.json.
-# name, email, food_category, seats, hist_surplus_rate, lat, lng, address
+# name, lat, lng, staffed_until (every day), closing, totes, fmv/meal, basis/meal, election, surplus_usually
 RESTAURANTS = [
-    ("ABC Restaurant", "restaurant@demo.com", "cuban", 90, 0.35, 25.7635, -80.3680, "Demo location near FIU (fictional business)"),
-    ("Sunrise Bakery", "bakery@demo.com", "bakery", 40, 0.45, 25.7702, -80.3405, "Demo location near FIU (fictional business)"),
-    ("Bayside Buffet", "buffet@demo.com", "buffet", 200, 0.55, 25.7330, -80.3830, "Demo location near FIU (fictional business)"),
-    ("Tamiami Pizza", "pizza@demo.com", "pizza", 70, 0.25, 25.7612, -80.3302, "Demo location near FIU (fictional business)"),
-    ("Coral Deli", "deli@demo.com", "deli", 50, 0.20, 25.7510, -80.3955, "Demo location near FIU (fictional business)"),
-    ("Sweetwater Sushi", "sushi@demo.com", "sushi", 60, 0.10, 25.7790, -80.3760, "Demo location near FIU (fictional business)"),
-]
-# name, email, lat, lng, capacity_meals, vehicle
-DRIVERS = [
-    ("Marcus", "driver@demo.com", 25.7580, -80.3720, 80, "SUV"),
-    ("Aisha", "aisha@demo.com", 25.7450, -80.3600, 60, "Sedan"),
-    ("Diego", "diego@demo.com", 25.7720, -80.3450, 60, "Hatchback"),
-    ("Priya", "priya@demo.com", 25.7360, -80.3880, 100, "Minivan"),
-    ("Sam", "sam@demo.com", 25.7810, -80.3950, 60, "Sedan"),
-]
-# name, email, org_type, lat, lng, address, meals_needed, priority, preferred_food, hours_to_deadline
-ORGANIZATIONS = [
-    ("Community Food Bank", "org@demo.com", "Food bank", 25.7480, -80.3500, "Demo location near FIU (fictional business)", 30, "HIGH", "Any", 6),
-    ("Hope Shelter", "shelter@demo.com", "Shelter", 25.7700, -80.3550, "Demo location near FIU (fictional business)", 20, "MEDIUM", "Hot meals", 6),
-    ("Westchester Church Pantry", "church@demo.com", "Church pantry", 25.7400, -80.3350, "Demo location near FIU (fictional business)", 25, "LOW", "Any", 8),
-    ("FIU Student Pantry", "pantry@demo.com", "School pantry", 25.7545, -80.3790, "Demo location near FIU (fictional business)", 15, "LOW", "Packaged", 8),
-]
-ADMIN = ("FoodFlow Admin", "admin@demo.com")
-
-# restaurant, driver, organization, meals, lbs, days_ago, minutes: past deliveries (is_demo_seed)
-PAST_DELIVERIES = [
-    ("Bayside Buffet", "Priya", "Community Food Bank", 45, 54.0, 1, 32),
-    ("Sunrise Bakery", "Diego", "Hope Shelter", 24, 18.0, 2, 21),
-    ("Tamiami Pizza", "Aisha", "Westchester Church Pantry", 18, 22.5, 3, 26),
+    ("Casa Demo Cocina", 25.7630, -80.3690, "23:30", "22:00", 6, 9.0, 3.0, False, "after dinner service, 9:30 to 10 PM"),
+    ("Demo Bakery Uno", 25.7700, -80.3450, "21:00", "20:00", 2, 4.0, None, True, "at closing, 8 PM"),
+    ("Demo Grill Norte", 25.7930, -80.3500, "01:00", "00:00", 4, 11.0, 4.0, False, "late night, 11 PM to midnight"),
+    ("Demo Pizza Sur", 25.7350, -80.3600, "22:30", "22:00", 0, 3.5, 1.2, False, "at closing"),
+    ("Demo Buffet Oeste", 25.7580, -80.4000, "00:30", "23:00", 8, 7.0, 2.5, False, "after the 10 PM buffet close"),
 ]
 
+EVERY_DAY = lambda windows: {d: windows for d in DAYS}  # noqa: E731
 
-def seed(db: Session) -> None:
-    now = utcnow()
-    # One hash shared by every demo account keeps reset under 2 seconds.
-    pw = hash_password(DEMO_PASSWORD)
+ORGS = {
+    "Demo Food Bank": dict(
+        lat=25.7480, lng=-80.3500, legal="Demo Food Bank Inc. (fictional)",
+        q1=dict(schedule={**{d: [["08:00", "17:00"]] for d in DAYS[:5]}, "sat": [["09:00", "13:00"]], "sun": []},
+                cutoff_minutes=30, receiving_contact_name="Dock lead (fictional)", receiving_contact_phone="305-555-0101",
+                receiving_instructions="Loading dock at the back, ring the bell.", curbside_ok=True,
+                curb_location="Loading dock driveway"),
+        q2=dict(accepts_hot=False, accepts_cold=True, fridge_capacity_meals=200, accepts_frozen=True,
+                freezer_capacity_meals=150, accepts_shelf_stable=True, dietary_rules=[], refused_allergens=[],
+                max_meals_per_delivery=150, typical_nightly_need=100),
+        q3=dict(required_fields=["date_time", "donor_name", "donor_address", "food_description", "food_category",
+                                 "quantity_meals", "weight_lbs"],
+                report_frequency="monthly", report_format="csv", reports_to="Partner food bank network (fictional)",
+                is_501c3=True, ein="00-0000001"),
+        verified=True),
+    "Demo Night Shelter": dict(
+        lat=25.7700, lng=-80.3550, legal="Demo Night Shelter Corp. (fictional)",
+        q1=dict(schedule=EVERY_DAY([["16:00", "24:00"]]), cutoff_minutes=15,
+                receiving_contact_name="Night supervisor (fictional)", receiving_contact_phone="305-555-0102",
+                receiving_instructions="Side door on the east wall, doorbell.", curbside_ok=True,
+                curb_location="East side door, loading zone"),
+        q2=dict(accepts_hot=True, hot_max_minutes=45, can_hold_hot=True, serves_immediately="dinner 6 to 8 PM",
+                accepts_cold=True, fridge_capacity_meals=60, accepts_frozen=False, accepts_shelf_stable=True,
+                dietary_rules=[], refused_allergens=[], max_meals_per_delivery=80, typical_nightly_need=60),
+        q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals",
+                                 "temperature_at_receipt", "condition", "received_by_name"],
+                report_frequency="per_delivery", report_format="pdf", reports_to="City homeless services program (fictional)",
+                is_501c3=True, ein="00-0000002"),
+        verified=True),
+    "Demo Community Fridge": dict(
+        lat=25.7545, lng=-80.3790, legal="Demo Community Fridge Collective (fictional)",
+        q1=dict(schedule=EVERY_DAY([["00:00", "24:00"]]), cutoff_minutes=0,
+                receiving_contact_name="Fridge steward on call (fictional)", receiving_contact_phone="305-555-0103",
+                receiving_instructions="Fridge is outside by the front gate; label with date.", curbside_ok=True,
+                curb_location="Front gate"),
+        q2=dict(accepts_hot=False, accepts_cold=True, fridge_capacity_meals=40, accepts_frozen=False,
+                accepts_shelf_stable=True, dietary_rules=[], refused_allergens=[], max_meals_per_delivery=40,
+                typical_nightly_need=30),
+        q3=dict(required_fields=["date_time", "food_description", "quantity_meals"], report_frequency="weekly",
+                report_format="csv", reports_to="", is_501c3=False, ein=None),
+        verified=False),
+    "Demo Halal Pantry": dict(
+        lat=25.7400, lng=-80.3350, legal="Demo Halal Pantry (fictional)",
+        q1=dict(schedule={**{d: [["10:00", "20:00"]] for d in DAYS[:6]}, "sun": []}, cutoff_minutes=30,
+                receiving_contact_name="Pantry coordinator (fictional)", receiving_contact_phone="305-555-0104",
+                receiving_instructions="Front office.", curbside_ok=False, curb_location=""),
+        q2=dict(accepts_hot=True, hot_max_minutes=30, can_hold_hot=False, serves_immediately="",
+                accepts_cold=True, fridge_capacity_meals=50, accepts_frozen=False, accepts_shelf_stable=True,
+                dietary_rules=["halal_only"], refused_allergens=["peanuts"], max_meals_per_delivery=60,
+                typical_nightly_need=40),
+        q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals", "allergen_info"],
+                report_frequency="monthly", report_format="pdf", reports_to="Mosque community committee (fictional)",
+                is_501c3=True, ein="00-0000004"),
+        verified=False),
+}
 
-    def user(name: str, email: str, role: str) -> User:
-        u = User(name=name, email=email, password_hash=pw, role=role)
-        db.add(u)
-        db.flush()
-        return u
+# name, email, home lat/lng, availability, capacity, cooler, bags, max mi, vehicle
+VOLUNTEERS = [
+    ("Marcus", "marcus@volunteer-demo.example.com", 25.7580, -80.3720, EVERY_DAY([["17:00", "22:00"]]), 60, True, True, 6, "Gray SUV"),
+    ("Aisha", "aisha@volunteer-demo.example.com", 25.7450, -80.3600, {d: [["12:00", "21:00"]] for d in DAYS[:5]}, 40, False, True, 5, "Blue sedan"),
+    ("Diego", "diego@volunteer-demo.example.com", 25.7720, -80.3450, {"fri": [["18:00", "23:00"]], "sat": [["18:00", "23:00"]]}, 40, True, False, 5, "Red hatchback"),
+    ("Priya", "priya@volunteer-demo.example.com", 25.7360, -80.3880, EVERY_DAY([["07:00", "12:00"]]), 80, True, True, 8, "Minivan"),
+    ("Sam", "sam@volunteer-demo.example.com", 25.7810, -80.3950, EVERY_DAY([["20:00", "23:30"]]), 50, True, True, 8, "White pickup"),
+    ("Lena", "lena@volunteer-demo.example.com", 25.7620, -80.3300, {"sat": [["10:00", "18:00"]], "sun": [["10:00", "18:00"]]}, 30, False, True, 4, "Green compact"),
+]
 
-    restaurants = {}
-    for name, email, cat, seats, hist, lat, lng, addr in RESTAURANTS:
-        r = Restaurant(user_id=user(name, email, "RESTAURANT").id, name=name, address=addr, lat=lat, lng=lng,
-                       food_category=cat, seats=seats, hist_surplus_rate=hist, is_demo_seed=True)
-        db.add(r)
-        restaurants[name] = r
-    drivers = {}
-    for name, email, lat, lng, cap, vehicle in DRIVERS:
-        d = Driver(user_id=user(name, email, "DRIVER").id, name=name, lat=lat, lng=lng, capacity_meals=cap,
-                   vehicle=vehicle, is_available=True)
-        db.add(d)
-        drivers[name] = d
-    orgs = {}
-    for name, email, otype, lat, lng, addr, meals, prio, pref, hours in ORGANIZATIONS:
-        o = Organization(user_id=user(name, email, "ORGANIZATION").id, name=name, org_type=otype, address=addr,
-                         lat=lat, lng=lng)
-        db.add(o)
-        db.flush()
-        db.add(FoodNeed(organization_id=o.id, meals_needed=meals, preferred_food=pref, priority=prio,
-                        deadline=now + timedelta(hours=hours), status="OPEN"))
-        orgs[name] = o
-    user(*ADMIN, "ADMIN")
+
+def _user(db: Session, email: str, name: str, role: str, org_id=None, phone="305-555-0199") -> User:
+    u = User(email=email, name=name, first_name=name.split()[0], role=role, organization_id=org_id, phone=phone,
+             is_demo_account=True, created_at=clock.now())
+    db.add(u)
     db.flush()
+    return u
 
-    # The "expiring soon" rescue: judges see urgency change the match when admin runs matching.
-    bakery = restaurants["Sunrise Bakery"]
-    db.add(FoodRescue(restaurant_id=bakery.id, food_type="Fresh bread and pastries", meals=20, weight_lbs=15,
-                      pickup_address=bakery.address, lat=bakery.lat, lng=bakery.lng,
-                      pickup_deadline=now + timedelta(minutes=25), time_sensitivity="HIGH",
-                      description="Baked this afternoon. Expiring soon.", status="OPEN", is_demo_seed=True))
 
-    for rname, dname, oname, meals, lbs, days_ago, minutes in PAST_DELIVERIES:
-        r, d, o = restaurants[rname], drivers[dname], orgs[oname]
-        when = now - timedelta(days=days_ago)
-        need = FoodNeed(organization_id=o.id, meals_needed=meals, meals_fulfilled=meals, priority="MEDIUM",
-                        deadline=when + timedelta(hours=3), status="FULFILLED", created_at=when - timedelta(hours=1))
-        rescue = FoodRescue(restaurant_id=r.id, food_type="Prepared meals", meals=meals, weight_lbs=lbs,
-                            pickup_address=r.address, lat=r.lat, lng=r.lng, pickup_deadline=when + timedelta(hours=2),
-                            time_sensitivity="MEDIUM", status="CONFIRMED", is_demo_seed=True, created_at=when)
-        db.add_all([need, rescue])
+def seed_accounts(db: Session) -> Dict[str, int]:
+    ids: Dict[str, int] = {}
+    admin = _user(db, "admin@foodflow-demo.example.com", "Demo Admin", "admin")
+    ids["admin"] = admin.id
+    for i, (name, lat, lng, staffed, closing, totes, fmv, basis, election, usually) in enumerate(RESTAURANTS):
+        org = Organization(kind="restaurant", name=name, legal_name=f"{name} LLC (fictional)",
+                           address="Demo location near FIU (fictional business)", lat=lat, lng=lng, is_fictional=True,
+                           created_at=clock.now())
+        db.add(org)
         db.flush()
-        match = Match(rescue_id=rescue.id, driver_id=d.id, pickup_miles=1.5, dropoff_miles=3.0, eta_minutes=minutes,
-                      score=0.0, reasons=["Demo history"], top_candidates=[], status="ACCEPTED", created_at=when)
-        match.stops = [MatchStop(need_id=need.id, organization_id=o.id, seq=1, meals=meals,
-                                 confirmed_at=when + timedelta(minutes=minutes + 5))]
-        db.add(match)
+        db.add(RestaurantProfile(organization_id=org.id, closing_times={d: closing for d in DAYS},
+                                 staffed_until={d: staffed for d in DAYS}, surplus_usually=usually, totes_on_hand=totes,
+                                 default_fmv_per_meal=fmv, default_cost_basis_per_meal=basis, basis_election_25pct=election,
+                                 pickup_instructions="Back door by the kitchen; ask for the closing cook (fictional)."))
+        ids[name] = org.id
+        slug = name.lower().replace(" ", "-")
+        if i == 0:
+            ids["restaurant_staff"] = _user(db, "staff@casa-demo.example.com", "Rosa Demo", "restaurant_staff", org.id).id
+            ids["restaurant_manager"] = _user(db, "manager@casa-demo.example.com", "Luis Demo", "restaurant_manager", org.id).id
+        else:
+            _user(db, f"manager@{slug}.example.com", f"{name} Manager", "restaurant_manager", org.id)
+    for name, spec in ORGS.items():
+        org = Organization(kind="receiver", name=name, legal_name=spec["legal"], address="Demo location near FIU (fictional)",
+                           lat=spec["lat"], lng=spec["lng"], is_fictional=True, created_at=clock.now())
+        db.add(org)
         db.flush()
-        delivered = when + timedelta(minutes=minutes)
-        delivery = Delivery(
-            rescue_id=rescue.id, match_id=match.id, driver_id=d.id, status="CONFIRMED", meals=meals, weight_lbs=lbs,
-            route={"geometry": [[r.lat, r.lng], [o.lat, o.lng]], "distance_miles": 3.0, "eta_minutes": minutes,
-                   "source": "offline"},
-            status_history=[{"status": "CONFIRMED", "at": delivered.isoformat() + "Z"}],
-            accepted_at=when, delivered_at=delivered, is_demo_seed=True,
-        )
-        db.add(delivery)
+        db.add(ReceiverProfile(organization_id=org.id))
         db.flush()
-        db.add(ImpactEvent(delivery_id=delivery.id, restaurant_id=r.id, organization_id=o.id, meals=meals,
-                           weight_lbs=lbs, delivery_minutes=minutes, is_demo_seed=True, created_at=delivered))
+        slug = name.lower().replace(" ", "-")
+        if name == "Demo Night Shelter":
+            manager = _user(db, "manager@shelter-demo.example.com", "Grace Demo", "org_manager", org.id)
+            ids["org_staff"] = _user(db, "staff@shelter-demo.example.com", "Tomas Demo", "org_staff", org.id).id
+        else:
+            manager = _user(db, f"manager@{slug}.example.com", f"{name} Manager", "org_manager", org.id)
+        ids["org_manager" if name == "Demo Night Shelter" else f"{name} manager"] = manager.id
+        for q, schema in intake.SCHEMAS.items():
+            intake.save_answers(db, org.id, q, schema(**spec[q.lower()]), manager)
+        if spec["verified"]:
+            profile = db.get(ReceiverProfile, org.id)
+            profile.ein_verified, profile.ein_verified_by, profile.ein_verified_at = True, admin.id, clock.now()
+        ids[name] = org.id
+    for name, email, lat, lng, avail, cap, cooler, bags, max_mi, vehicle in VOLUNTEERS:
+        u = _user(db, email, name, "volunteer", phone="305-555-0150")
+        db.add(VolunteerProfile(user_id=u.id, availability=avail, capacity_meals=cap, has_cooler=cooler,
+                                has_insulated_bags=bags, max_distance_mi=max_mi, vehicle_description=vehicle,
+                                home_lat=lat, home_lng=lng))
+        ids[name] = u.id
+        if name == "Marcus":
+            ids["volunteer"] = u.id
+    db.flush()
+    return ids
+
+
+def seed(db: Session, with_scenarios: bool = True) -> Dict[str, int]:
+    ids = seed_accounts(db)
     db.commit()
+    if with_scenarios:
+        from app.demo_scenarios import run_all
+
+        run_all(db, ids)
+    return ids
 
 
-def reset_database() -> None:
-    """Drop everything and reseed: the exact demo starting state."""
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+def reset_database(with_scenarios: bool = True) -> None:
+    drop_schema(engine)
+    create_schema(engine)
     with SessionLocal() as db:
-        seed(db)
+        seed(db, with_scenarios)
 
 
 def schema_is_current() -> bool:
-    """True when every model column exists in the database (new columns need a rebuild)."""
     insp = inspect(engine)
     tables = set(insp.get_table_names())
     for table in Base.metadata.sorted_tables:
         if table.name not in tables:
-            continue
+            return False
         have = {c["name"] for c in insp.get_columns(table.name)}
         if not {c.name for c in table.columns} <= have:
             return False
@@ -152,11 +199,10 @@ def schema_is_current() -> bool:
 
 
 def seed_if_empty() -> None:
-    """Demo mode startup: rebuild an out-of-date demo database, then seed it if empty."""
     if not schema_is_current():
         reset_database()
         return
-    Base.metadata.create_all(engine)
+    create_schema(engine)
     with SessionLocal() as db:
         if db.query(User).first() is None:
             seed(db)
@@ -164,4 +210,5 @@ def seed_if_empty() -> None:
 
 if __name__ == "__main__":
     reset_database()
-    print("Database reset to the demo seed.")
+    print("Database reset to the fictional demo seed.")
+
