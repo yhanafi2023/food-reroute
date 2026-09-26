@@ -23,7 +23,6 @@ os.environ.setdefault("DEMO_MODE", "true")
 DEMO_MODE = _bool("DEMO_MODE", True)
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")  # Miami-Dade
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 RUN_SCHEDULER = _bool("RUN_SCHEDULER", True)
 SCHEDULER_SECONDS = int(os.getenv("SCHEDULER_SECONDS", "30"))
 

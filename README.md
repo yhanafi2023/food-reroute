@@ -37,9 +37,9 @@ the real services (see `backend/app/seed.py` for sign-in details). `python -m ap
 |---|---|---|
 | `DATABASE_URL` | SQLite file | `postgresql://...` for Postgres |
 | `JWT_SECRET` | dev value | Signs sessions; set a long random value anywhere public |
-| `DEMO_MODE` | `true` | Seed fictional demo data; allow the demo sign-in code for demo accounts |
+| `DEMO_MODE` | `true` | Seed fictional demo data; demo accounts (password `demo1234`) can sign in only in this mode |
 | `TIMEZONE` | `America/New_York` | Local time for receiving hours and schedules |
-| `CORS_ORIGINS`, `FRONTEND_URL` | localhost:3000 | Allowed origins; magic-link base URL |
+| `CORS_ORIGINS` | localhost:3000 | Allowed origins |
 | `RUN_SCHEDULER`, `SCHEDULER_SECONDS` | `true`, `30` | Background checks (no-shows, expiry, vehicles, reports) |
 | `ROUTING_SERVICE_URL` | empty | Teammate routing service (`POST /eta`); empty uses the in-process ETA model |
 | `ALLOCATION_SERVICE_URL` | empty | Teammate allocation service (`POST /allocate`); empty uses the in-process allocator |
@@ -53,10 +53,9 @@ the real services (see `backend/app/seed.py` for sign-in details). `python -m ap
 
 ```bash
 API=http://localhost:8000
-# sign in (the code arrives by the console/email provider; demo accounts may use the demo code in app/seed.py)
-curl -s -X POST $API/auth/request-code -H 'content-type: application/json' -d '{"email":"staff@casa-demo.example.com"}'
-TOKEN=$(curl -s -X POST $API/auth/verify -H 'content-type: application/json' \
-  -d '{"email":"staff@casa-demo.example.com","code":"<code>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+# sign in with email and password (every demo account in app/seed.py uses demo1234)
+TOKEN=$(curl -s -X POST $API/auth/login -H 'content-type: application/json' \
+  -d '{"email":"staff@casa-demo.example.com","password":"demo1234"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 
 # quick post: quantity + unit + category + deadline + attestation
 curl -s -X POST $API/rescues -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
@@ -80,7 +79,7 @@ curl -s $API/rescues/1/matching-explanation -H "Authorization: Bearer $TOKEN"
 
 | Area | Endpoints |
 |---|---|
-| Sign-in and members | `POST /auth/request-code`, `POST /auth/verify`, `GET /auth/me`, `POST /auth/register-organization`, `POST /auth/register-volunteer`, `GET/POST /orgs/me/members`, `DELETE /orgs/me/members/{id}` |
+| Sign-in and members | `POST /auth/login`, `GET /auth/me`, `POST /auth/register-organization`, `POST /auth/register-volunteer`, `GET/POST /orgs/me/members`, `DELETE /orgs/me/members/{id}` |
 | Onboarding | `PUT /orgs/me/intake/{Q1,Q2,Q3}`, `POST /orgs/me/intake/confirm`, `GET /orgs/me/profile`, `GET /orgs/{id}/profile-completeness`, `POST /orgs/me/need`, `POST /admin/orgs/{id}/verify-ein`, `GET/PUT /restaurants/me/profile`, `GET/PUT /volunteers/me/profile` |
 | Posting | `POST /rescues`, `POST /rescues/repeat-last`, `GET/POST /restaurants/me/templates`, `POST /rescues/from-template/{id}`, `POST /restaurants/me/schedules`, `POST /rescues/{id}/confirm`, `PATCH /rescues/{id}`, `POST /rescues/{id}/cancel` |
 | Matching | `GET /rescues/{id}/matching-explanation`, `GET /fleet/availability` |
@@ -90,7 +89,11 @@ curl -s $API/rescues/1/matching-explanation -H "Authorization: Bearer $TOKEN"
 | Analytics and admin | `GET /analytics/coverage`, `/compare-fleets`, `/matching-rejections`, `POST /admin/jobs/run`, `GET /config/assumptions` |
 | Prospects (research, not partners) | `GET /prospects`, `/prospects/meta`, `/prospects/opportunities`, `/prospects/{id}`, `PUT /prospects/{id}/surplus-log`, `GET/PUT /restaurants/me/surplus-log` |
 
-All state-changing endpoints accept an `Idempotency-Key` header. Illegal state changes return 409.
+Accounts sign in with an email and a password, stored as a salted PBKDF2 hash; registration returns a session, and no
+email is ever sent. A manager sets a new staff member's password when adding them.
+
+All state-changing endpoints except `/auth/*` accept an `Idempotency-Key` header (sign-in responses carry a session
+token, so they are never stored or replayed). Illegal state changes return 409.
 
 ## Driver ETA and live tracking
 

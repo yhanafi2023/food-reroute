@@ -30,6 +30,7 @@ export default function AdminDashboardPage() {
 
   return (
     <AppShell
+      icon="stats"
       title="Network"
       subtitle="Every restaurant, volunteer and organization, live."
       actions={
@@ -58,10 +59,10 @@ export default function AdminDashboardPage() {
       {!data ? <Loading /> : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Stat label="Open rescues" value={data.stats.open_rescues} />
-            <Stat label="Active trips" value={data.stats.active_trips} />
-            <Stat label="Volunteers available" value={`${data.stats.available_volunteers} / ${data.stats.total_volunteers}`} />
-            <Stat label="Meals rescued" value={number(data.impact.meals_rescued)} note={data.impact.includes_demo_data ? "Includes demo data" : undefined} />
+            <Stat label="Open rescues" icon="food-box" value={data.stats.open_rescues} />
+            <Stat label="Active trips" icon="route" value={data.stats.active_trips} />
+            <Stat label="Volunteers available" icon="driver" value={`${data.stats.available_volunteers} / ${data.stats.total_volunteers}`} />
+            <Stat label="Meals rescued" icon="hot-meal" value={number(data.impact.meals_rescued)} note={data.impact.includes_demo_data ? "Includes demo data" : undefined} />
           </div>
 
           <section className="panel flex flex-col gap-3 border-l-4" style={{ borderLeftColor: "var(--cyan)" }}>
@@ -71,8 +72,8 @@ export default function AdminDashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Stat label="Active rescues" value={data.active_rescues.length} />
-              <Stat label="Organizations requesting food" value={data.organizations.filter((o) => (o.current_need ?? 0) > 0).length} />
-              <Stat label="High-need areas underserved" value={underservedHighNeed} note="High/Very High need with an open request" />
+              <Stat label="Organizations requesting food" icon="community-org" value={data.organizations.filter((o) => (o.current_need ?? 0) > 0).length} />
+              <Stat label="High-need areas underserved" icon="alert" value={underservedHighNeed} note="High/Very High need with an open request" />
               <Stat label="Meals in the network today" value={number(data.active_rescues.reduce((s, r) => s + r.est_meals, 0))} />
             </div>
           </section>

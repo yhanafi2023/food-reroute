@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import AppShell, { ErrorNote, LiveStatus, Loading, Stat } from "@/components/AppShell";
 import DeliveryMap from "@/components/DeliveryMap";
+import Icon from "@/components/Icon";
 import StatusTimeline from "@/components/StatusTimeline";
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
@@ -29,7 +30,7 @@ function OfferCard({ trip, busy, onAccept, onDecline }: { trip: Trip; busy: bool
   return (
     <section className="panel panel-accent flex flex-col gap-4" aria-labelledby="offer-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span id="offer-title" className="eyebrow" style={{ color: "var(--accent)" }}>New food rescue</span>
+        <span id="offer-title" className="eyebrow flex items-center gap-2" style={{ color: "var(--accent)" }}><Icon name="food-box" size={24} />New food rescue</span>
         <span className="chip chip-warn">pickup {until(rescue.pickup_deadline)}</span>
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -146,6 +147,7 @@ export default function VolunteerDashboardPage() {
 
   return (
     <AppShell
+      icon="driver"
       title={`Hi, ${user.first_name}`}
       subtitle="One offer at a time, one next step at a time."
       actions={data && (
@@ -182,13 +184,13 @@ export default function VolunteerDashboardPage() {
 
           {!offer && !active && (
             <div className="panel flex flex-col gap-2">
-              <h3>Waiting for the next rescue</h3>
+              <h3 className="flex items-center gap-3"><Icon name="schedule" size={30} />Waiting for the next rescue</h3>
               <p className="text-ink-2">New offers appear here automatically, based on your availability schedule. Keep this page open.</p>
             </div>
           )}
 
           <div className="grid gap-4 md:grid-cols-[240px_1fr]">
-            <Stat label="Meals moved" value={number(totalMeals)} note={`${data.history.length} trips`} />
+            <Stat label="Meals moved" icon="hot-meal" value={number(totalMeals)} note={`${data.history.length} trips`} />
             <section className="panel flex flex-col gap-3">
               <h3>Trip history</h3>
               {data.history.length === 0 ? <p className="text-ink-3">None yet.</p> : (

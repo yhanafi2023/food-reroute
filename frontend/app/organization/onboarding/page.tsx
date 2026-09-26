@@ -126,7 +126,7 @@ export default function OrgOnboardingPage() {
   }
 
   return (
-    <AppShell title="Onboarding" subtitle="Answer these three questions before deliveries can be routed to you.">
+    <AppShell icon="schedule" title="Onboarding" subtitle="Answer these three questions before deliveries can be routed to you.">
       <ErrorNote message={error} />
       {note && <div className="alert alert-good" role="status">{note}</div>}
       {!profile ? <Loading /> : (

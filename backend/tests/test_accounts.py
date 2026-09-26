@@ -1,11 +1,12 @@
-"""Section 1: passwordless sign-in, roles, organization membership, privacy."""
+"""Section 1: email and password sign-in, roles, organization membership, privacy."""
 import pytest
 from fastapi.testclient import TestClient
 
+from app import auth
 from app.db import SessionLocal
 from app.main import app
-from app.models import Notification, User
-from app.seed import reset_database
+from app.models import IdempotencyRecord, Notification, User
+from app.seed import DEMO_PASSWORD, reset_database
 from tests.helpers import EMAILS, signin
 
 
@@ -16,11 +17,13 @@ def client(fake_clock):
         yield c
 
 
-def _last_code(email):
-    with SessionLocal() as db:
-        user = db.query(User).filter_by(email=email).one()
-        n = db.query(Notification).filter_by(user_id=user.id, event="login_code").order_by(Notification.id.desc()).first()
-        return n.body.split("Code ")[1][:6], n.body.split("token=")[1].strip()
+def _login(client, email, password):
+    return client.post("/auth/login", json={"email": email, "password": password})
+
+
+def _volunteer(client, email="new@volunteer.example.com", password="correct horse battery"):
+    return client.post("/auth/register-volunteer", json={
+        "name": "Val Test", "email": email, "password": password, "home_lat": 25.76, "home_lng": -80.37})
 
 
 def test_one_demo_account_per_role(client):
@@ -29,62 +32,87 @@ def test_one_demo_account_per_role(client):
         assert me["role"] == role
 
 
-def test_email_code_and_magic_link(client, fake_clock):
-    r = client.post("/auth/request-code", json={"email": "staff@casa-demo.example.com"})
-    assert r.status_code == 200
-    code, link = _last_code("staff@casa-demo.example.com")
-    assert client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": "000000"}).status_code == 401
-    ok = client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": code})
+def test_email_and_password_sign_in(client):
+    ok = _login(client, "staff@casa-demo.example.com", DEMO_PASSWORD)
     assert ok.status_code == 200 and ok.json()["user"]["role"] == "restaurant_staff"
-    assert client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": code}).status_code == 401  # single use
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {ok.json()['token']}"}).status_code == 200
+    assert _login(client, "STAFF@Casa-Demo.example.com", DEMO_PASSWORD).status_code == 200  # email is case-insensitive
 
-    client.post("/auth/request-code", json={"email": "staff@casa-demo.example.com"})
-    _, link = _last_code("staff@casa-demo.example.com")
-    assert client.post("/auth/verify", json={"token": link}).status_code == 200
-    assert client.post("/auth/verify", json={"token": link}).status_code == 401  # single use
-
-    client.post("/auth/request-code", json={"email": "staff@casa-demo.example.com"})
-    code, _ = _last_code("staff@casa-demo.example.com")
-    fake_clock.advance(minutes=11)
-    assert client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": code}).status_code == 401  # expired
+    wrong = _login(client, "staff@casa-demo.example.com", "not-the-password")
+    unknown = _login(client, "nobody@nowhere.example.com", DEMO_PASSWORD)
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json() == unknown.json() == {"detail": "Incorrect email or password"}  # does not reveal accounts
+    assert client.post("/auth/login", json={"email": "staff@casa-demo.example.com"}).status_code == 422
 
 
-def test_code_attempts_are_limited(client):
-    client.post("/auth/request-code", json={"email": "staff@casa-demo.example.com"})
-    code, _ = _last_code("staff@casa-demo.example.com")
-    for _ in range(5):
-        client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": "999999"})
-    assert client.post("/auth/verify", json={"email": "staff@casa-demo.example.com", "code": code}).status_code == 429
+def test_registration_stores_a_password_hash_and_signs_in(client):
+    r = _volunteer(client)
+    assert r.status_code == 200, r.text
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {r.json()['token']}"}).json()["role"] == "volunteer"
+    with SessionLocal() as db:
+        user = db.query(User).filter_by(email="new@volunteer.example.com").one()
+        assert "correct horse battery" not in user.password_hash
+        assert user.password_hash.startswith("pbkdf2_sha256$")
+        assert db.query(Notification).filter_by(user_id=user.id).count() == 0  # no email or code is sent
+    assert _login(client, "new@volunteer.example.com", "correct horse battery").status_code == 200
+    assert _login(client, "new@volunteer.example.com", "correct horse batter").status_code == 401
+
+    assert _volunteer(client).status_code == 409  # same email again
+    short = _volunteer(client, email="short@volunteer.example.com", password="seven77")
+    assert short.status_code == 422 and "password" in short.text
+    with SessionLocal() as db:
+        assert db.query(User).filter_by(email="short@volunteer.example.com").count() == 0
 
 
-def test_unknown_email_does_not_reveal_accounts(client):
-    r = client.post("/auth/request-code", json={"email": "nobody@nowhere.example.com"})
-    assert r.status_code == 200 and "If that email has an account" in r.json()["message"]
+def test_stored_hash_keeps_its_own_work_factor(monkeypatch):
+    monkeypatch.setattr(auth, "PASSWORD_ITERATIONS", 2_000)
+    old = auth.hash_password("pw-before-upgrade")
+    monkeypatch.setattr(auth, "PASSWORD_ITERATIONS", 3_000)
+    assert old.split("$")[1] == "2000" and auth.verify_password("pw-before-upgrade", old)
+    assert auth.hash_password("same") != auth.hash_password("same")  # salted
+    for broken in ("", "plaintext", "md5$1$abc$def", "pbkdf2_sha256$x$abc$def", "pbkdf2_sha256$1000$!!$!!"):
+        assert auth.verify_password("plaintext", broken) is False
+
+
+def test_demo_accounts_sign_in_only_in_demo_mode(client, monkeypatch):
+    assert _volunteer(client).status_code == 200
+    monkeypatch.setattr(auth, "DEMO_MODE", False)
+    r = _login(client, EMAILS["admin"], DEMO_PASSWORD)
+    assert r.status_code == 403 and "DEMO_MODE" in r.json()["detail"]
+    assert _login(client, "new@volunteer.example.com", "correct horse battery").status_code == 200  # real accounts work
+
+
+def test_sign_in_responses_are_never_stored_or_replayed(client):
+    key = {"Idempotency-Key": "same-key"}
+    first = client.post("/auth/login", json={"email": EMAILS["volunteer"], "password": DEMO_PASSWORD}, headers=key)
+    second = client.post("/auth/login", json={"email": EMAILS["admin"], "password": "wrong-password"}, headers=key)
+    assert first.status_code == 200 and second.status_code == 401  # not handed the first caller's session
+    with SessionLocal() as db:
+        assert db.query(IdempotencyRecord).count() == 0
 
 
 def test_registration_and_manager_staff_management(client):
     r = client.post("/auth/register-organization", json={
         "kind": "restaurant", "organization_name": "New Kitchen (test)", "lat": 25.76, "lng": -80.37,
-        "manager_name": "Ana Test", "manager_email": "ana@newkitchen.example.com"})
+        "manager_name": "Ana Test", "manager_email": "ana@newkitchen.example.com", "manager_password": "ana-password"})
     assert r.status_code == 200 and r.json()["user"]["role"] == "restaurant_manager"
-    mgr = signin_code(client, "ana@newkitchen.example.com")
-    add = client.post("/orgs/me/members", json={"email": "cook@newkitchen.example.com", "name": "Cook Test"}, headers=mgr)
+    mgr = signin(client, "ana@newkitchen.example.com", "ana-password")
+    assert client.post("/orgs/me/members", json={"email": "cook@newkitchen.example.com", "name": "Cook Test"},
+                       headers=mgr).status_code == 422  # a new member needs a password
+    add = client.post("/orgs/me/members", json={"email": "cook@newkitchen.example.com", "name": "Cook Test",
+                                                "password": "cook-password"}, headers=mgr)
     assert add.status_code == 200 and add.json()["role"] == "restaurant_staff"
     members = client.get("/orgs/me/members", headers=mgr).json()
     assert {m["email"] for m in members} == {"ana@newkitchen.example.com", "cook@newkitchen.example.com"}
-    staff = signin_code(client, "cook@newkitchen.example.com")
+    assert all("password" not in key for m in members for key in m)
+    staff = signin(client, "cook@newkitchen.example.com", "cook-password")
     assert client.get("/orgs/me/members", headers=staff).status_code == 403  # staff cannot manage staff
     assert client.delete(f"/orgs/me/members/{add.json()['id']}", headers=mgr).status_code == 200
     assert client.get("/auth/me", headers=staff).status_code == 401  # deactivated
+    assert _login(client, "cook@newkitchen.example.com", "cook-password").status_code == 401  # and cannot sign in
 
     other_mgr = signin(client, EMAILS["restaurant_manager"])
     assert client.delete(f"/orgs/me/members/{members[0]['id']}", headers=other_mgr).status_code == 404  # other org
-
-
-def signin_code(client, email):
-    client.post("/auth/request-code", json={"email": email})
-    code, _ = _last_code(email)
-    return {"Authorization": f"Bearer {client.post('/auth/verify', json={'email': email, 'code': code}).json()['token']}"}
 
 
 def test_role_boundaries_on_admin_and_profiles(client):
@@ -100,6 +128,16 @@ def test_user_org_membership_constraint():
 
     reset_database(with_scenarios=False)
     with SessionLocal() as db:
-        db.add(User(email="bad@x.example.com", name="Bad", role="volunteer", organization_id=1))
+        db.add(User(email="bad@x.example.com", password_hash="x", name="Bad", role="volunteer", organization_id=1))
+        with pytest.raises(IntegrityError):
+            db.commit()
+
+
+def test_every_account_has_a_password():
+    from sqlalchemy.exc import IntegrityError
+
+    reset_database(with_scenarios=False)
+    with SessionLocal() as db:
+        db.add(User(email="nopass@x.example.com", name="No Pass", role="volunteer"))
         with pytest.raises(IntegrityError):
             db.commit()

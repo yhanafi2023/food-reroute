@@ -20,16 +20,18 @@ session via your Census API key (stored server-side only in `backend/.env` as `C
 
 **Run it**: `cd backend && .venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000`
 **Reset demo data**: `.venv/Scripts/python.exe -m app.seed`
-**Tests**: `.venv/Scripts/python.exe -m pytest tests/ -q` → 119/119 passing
+**Tests**: `.venv/Scripts/python.exe -m pytest tests/ -q` → 122/122 passing
 
 **Data model** (`app/models.py`): `Organization` (kind=restaurant|receiver) → `RestaurantProfile` /
 `ReceiverProfile`; `User` (roles: restaurant_staff/restaurant_manager, volunteer, org_staff/org_manager,
 admin); `Rescue` → `Trip` → `TripStop`; `MatchingExplanation` (now carries a `score` JSON column);
 `ImpactEvent`, `Notification`, `AuditEvent`, `SurplusLog`, etc.
 
-**Auth**: passwordless. `POST /auth/request-code` {email} → 6-digit code + magic link (console-logged
-in dev). `POST /auth/verify` {email,code} or {token}. Demo accounts also accept the fixed code
-`246810` (see `app/seed.py` for all demo logins, e.g. `manager@casa-demo.example.com`).
+**Auth**: email + password, no email is ever sent. `POST /auth/login` {email,password} → JWT.
+Registration (`/auth/register-organization`, `/auth/register-volunteer`) takes a password (min 8),
+stores a salted PBKDF2-SHA256 hash in `users.password_hash`, and returns a session. Demo accounts share
+the password `demo1234`, accepted only while DEMO_MODE is on (see `app/seed.py` for all demo logins,
+e.g. `manager@casa-demo.example.com`).
 
 **Matching pipeline**: `POST /rescues` → `app/dispatch.py::run_matching` → `app/eligibility.py::check`
 (hard constraints: hours, food category, allergens, capacity, distance — eliminates candidates
@@ -53,12 +55,12 @@ trips, admin-only), `GET /impact` (public, was written but never routed before).
 **Run it**: `cd frontend && npm run dev` (port 3000). `.env.local` has `NEXT_PUBLIC_API_URL=http://localhost:8000`.
 No more mock-data mode — it talks to the real backend now (`lib/mock.ts` deleted).
 
-**Pages**: `/login`, `/signup`, `/auth/callback` (magic link), `/restaurant/dashboard`,
+**Pages**: `/login`, `/signup`, `/restaurant/dashboard`,
 `/restaurant/surplus-log`, `/volunteer/dashboard` (was `/driver`), `/organization/dashboard`,
 `/organization/onboarding` (Q1/Q2/Q3 intake form), `/admin/dashboard` (network map + Community Impact
 Mode + community-need choropleth toggle), `/admin/prospects`, `/impact`, `/qr`.
 
-**Key files**: `lib/types.ts` (mirrors real backend JSON), `lib/auth.tsx` (passwordless flow),
+**Key files**: `lib/types.ts` (mirrors real backend JSON), `lib/auth.tsx` (email + password sign-in),
 `components/MapView.tsx` (map + the community-need choropleth layer/legend/toggle),
 `components/MatchCard.tsx` + `WhyThisMatch.tsx` (match result + score breakdown/alternatives),
 `components/RescueSequence.tsx` (the cinematic "finding a match" animation).

@@ -3,16 +3,24 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HOME_FOR_ROLE, useAuth } from "@/lib/auth";
+import Icon, { IconTile, type IconName } from "./Icon";
 import type { Role } from "@/lib/types";
+
+// Pickup (amber) to drop off (mint) along one route.
+export function BrandMark({ size = 28, light = true }: { size?: number; light?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" aria-hidden>
+      <circle cx="6" cy="21" r="4" fill="#f59e0b" />
+      <circle cx="22" cy="7" r="4" fill="#34d399" />
+      <path d="M6 21 C 6 12, 22 16, 22 7" stroke={light ? "#22d3ee" : "#3b82f6"} strokeWidth="3" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function Brand({ light = false }: { light?: boolean }) {
   return (
     <Link href="/" className="flex items-center gap-2 no-underline" aria-label="FoodFlow home">
-      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden>
-        <circle cx="6" cy="21" r="4" fill="#f59e0b" />
-        <circle cx="22" cy="7" r="4" fill="#34d399" />
-        <path d="M6 21 C 6 12, 22 16, 22 7" stroke={light ? "#22d3ee" : "#3b82f6"} strokeWidth="3" fill="none" strokeLinecap="round" />
-      </svg>
+      <BrandMark light={light} />
       <span className="text-xl font-bold tracking-tight text-ink" style={{ fontFamily: "var(--ff-display)" }}>
         FoodFlow
       </span>
@@ -42,6 +50,14 @@ const ROLE_LINKS: Record<Role, { href: string; label: string }[]> = {
     { href: "/admin/dashboard", label: "Network" },
     { href: "/admin/prospects", label: "Prospects" },
   ],
+};
+export const ROLE_ICON: Record<Role, IconName> = {
+  restaurant_staff: "restaurant",
+  restaurant_manager: "restaurant",
+  volunteer: "driver",
+  org_staff: "community-org",
+  org_manager: "community-org",
+  admin: "stats",
 };
 const PUBLIC_LINKS = [
   { href: "/#how", label: "How it works" },
@@ -94,7 +110,8 @@ export function TopNav() {
         <div className="hidden items-center gap-2 md:flex">
           {!ready ? null : user ? (
             <>
-              <Link href={HOME_FOR_ROLE[user.role]} className="rounded-full px-4 py-2 text-sm font-semibold text-ink/85 no-underline hover:bg-white/10">
+              <Link href={HOME_FOR_ROLE[user.role]} className="flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 text-sm font-semibold text-ink/85 no-underline hover:bg-white/10">
+                <Icon name={ROLE_ICON[user.role]} size={28} className="rounded-full bg-[#eef2f7]" />
                 {user.name}
               </Link>
               <button onClick={signOut} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-ink">Log out</button>
@@ -132,7 +149,10 @@ export function TopNav() {
           <div className="flex flex-col gap-3">
             {user ? (
               <>
-                <span className="text-sm text-ink-3">Signed in as {user.name} ({user.role.toLowerCase()})</span>
+                <span className="flex items-center gap-2 text-sm text-ink-3">
+                  <Icon name={ROLE_ICON[user.role]} size={28} className="rounded-full bg-[#eef2f7]" />
+                  Signed in as {user.name} ({user.role.toLowerCase()})
+                </span>
                 <button onClick={signOut} className="min-h-12 rounded-full bg-accent text-lg font-semibold text-white">Log out</button>
               </>
             ) : (
@@ -148,17 +168,20 @@ export function TopNav() {
   );
 }
 
-export default function AppShell({ title, subtitle, children, actions }: {
-  title: string; subtitle?: string; children: ReactNode; actions?: ReactNode;
+export default function AppShell({ title, subtitle, children, actions, icon }: {
+  title: string; subtitle?: string; children: ReactNode; actions?: ReactNode; icon?: IconName;
 }) {
   return (
     <div className="min-h-screen">
       <TopNav />
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 style={{ fontSize: "var(--t-2xl)" }}>{title}</h1>
-            {subtitle && <p className="text-ink-2">{subtitle}</p>}
+          <div className="flex items-center gap-4">
+            {icon && <IconTile name={icon} size={56} />}
+            <div className="flex flex-col gap-1">
+              <h1 style={{ fontSize: "var(--t-2xl)" }}>{title}</h1>
+              {subtitle && <p className="text-ink-2">{subtitle}</p>}
+            </div>
           </div>
           {actions}
         </div>
@@ -208,10 +231,13 @@ export function LiveStatus({ updatedAt, error }: { updatedAt: number | null; err
   );
 }
 
-export function Stat({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
+export function Stat({ label, value, note, icon }: { label: string; value: ReactNode; note?: string; icon?: IconName }) {
   return (
     <div className="panel stat">
-      <span className="eyebrow">{label}</span>
+      <span className="flex items-start justify-between gap-2">
+        <span className="eyebrow">{label}</span>
+        {icon && <Icon name={icon} size={28} />}
+      </span>
       <span className="stat-value">{value}</span>
       {note && <span className="text-sm text-ink-3">{note}</span>}
     </div>

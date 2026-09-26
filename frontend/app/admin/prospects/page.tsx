@@ -85,7 +85,7 @@ export default function ProspectsPage() {
   const clearFilters = () => { setQ(""); setNeighborhood(""); setBusinessType(""); setEvidence([]); setMaxMiles(""); };
 
   return (
-    <AppShell title="Miami surplus prospects" subtitle="Researched businesses near FIU that may have recoverable surplus. Research only: none of these are FoodFlow partners.">
+    <AppShell icon="pickup-pin" title="Miami surplus prospects" subtitle="Researched businesses near FIU that may have recoverable surplus. Research only: none of these are FoodFlow partners.">
       {meta && (
         <p className="alert alert-info max-w-[90ch]">
           Checked {meta.checked} from public sources: business websites, a food-rescue organization&apos;s donor list, and

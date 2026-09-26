@@ -10,49 +10,46 @@ All accounts and organizations in the demo are fictional. No user research was d
 ## Persona walkthroughs (measured)
 
 Measured by running `backend/scripts/walkthroughs.py` (FastAPI test client, fictional seed, Friday 7 PM Miami).
-The counts are the API calls a client app makes; sign-in is two calls (request code, verify).
+The counts are the API calls a client app makes; sign-in is one call (email and password).
 
-### Restaurant staff: 4 API calls
+### Restaurant staff: 3 API calls
 
 | # | Step | Call | Status |
 |---|---|---|---|
-| 1 | sign in | `POST /auth/request-code` | 200 |
-| 2 | sign in | `POST /auth/verify` | 200 |
-| 3 | quick post (quantity, unit, category, deadline + attestation) | `POST /rescues` | 200 |
-| 4 | open the rescue to read the pickup code | `GET /rescues/{id}` | 200 |
+| 1 | sign in | `POST /auth/login` | 200 |
+| 2 | quick post (quantity, unit, category, deadline + attestation) | `POST /rescues` | 200 |
+| 3 | open the rescue to read the pickup code | `GET /rescues/{id}` | 200 |
 
-The post returns the match immediately (carrier, ETA, pickup code), so step 4 is only needed later at handoff.
+The post returns the match immediately (carrier, ETA, pickup code), so step 3 is only needed later at handoff.
 "Repeat last post" (`POST /rescues/repeat-last`) and one-tap recurring drafts (`POST /rescues/{id}/confirm`)
 make a regular night's post one call after sign-in.
 
-### Volunteer: 6 API calls
+### Volunteer: 5 API calls
 
 | # | Step | Call | Status |
 |---|---|---|---|
-| 1 | sign in | `POST /auth/request-code` | 200 |
-| 2 | sign in | `POST /auth/verify` | 200 |
-| 3 | see the offer | `GET /volunteers/me/trips` | 200 |
-| 4 | accept | `POST /trips/{id}/accept` | 200 |
-| 5 | enter pickup code and meal count | `POST /trips/{id}/pickup` | 200 |
-| 6 | enter drop-off code | `POST /stops/{id}/deliver` | 200 |
+| 1 | sign in | `POST /auth/login` | 200 |
+| 2 | see the offer | `GET /volunteers/me/trips` | 200 |
+| 3 | accept | `POST /trips/{id}/accept` | 200 |
+| 4 | enter pickup code and meal count | `POST /trips/{id}/pickup` | 200 |
+| 5 | enter drop-off code | `POST /stops/{id}/deliver` | 200 |
 
-Steps 4 to 6 accept an `Idempotency-Key` header: a retried tap on a bad connection replays the first response
+Steps 3 to 5 accept an `Idempotency-Key` header: a retried tap on a bad connection replays the first response
 instead of applying twice.
 
-### Organization coordinator: 8 API calls
+### Organization coordinator: 7 API calls
 
 | # | Step | Call | Status |
 |---|---|---|---|
-| 1 | sign in | `POST /auth/request-code` | 200 |
-| 2 | sign in | `POST /auth/verify` | 200 |
-| 3 | see incoming and to-confirm deliveries | `GET /orgs/me/deliveries` | 200 |
-| 4 | confirm receipt (condition, temperature, name) | `POST /stops/{id}/receipt` | 200 |
-| 5 | open the donor acknowledgment | `GET /acknowledgments` | 200 |
-| 6 | e-sign it | `POST /acknowledgments/{id}/sign` | 200 |
-| 7 | build this month's report | `POST /orgs/me/reports` | 200 |
-| 8 | download the CSV | `GET /orgs/me/reports/{id}/download` | 200 |
+| 1 | sign in | `POST /auth/login` | 200 |
+| 2 | see incoming and to-confirm deliveries | `GET /orgs/me/deliveries` | 200 |
+| 3 | confirm receipt (condition, temperature, name) | `POST /stops/{id}/receipt` | 200 |
+| 4 | open the donor acknowledgment | `GET /acknowledgments` | 200 |
+| 5 | e-sign it | `POST /acknowledgments/{id}/sign` | 200 |
+| 6 | build this month's report | `POST /orgs/me/reports` | 200 |
+| 7 | download the CSV | `GET /orgs/me/reports/{id}/download` | 200 |
 
-Reports are also generated automatically at each org's chosen frequency, so steps 7 and 8 become one download.
+Reports are also generated automatically at each org's chosen frequency, so steps 6 and 7 become one download.
 
 ## What happens when things go wrong
 

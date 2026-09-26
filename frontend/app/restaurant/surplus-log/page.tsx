@@ -13,7 +13,7 @@ export default function RestaurantSurplusLogPage() {
   if (!user) return null;
   const current = saved ?? data;
   return (
-    <AppShell title="Surplus log" subtitle="Seven days of closing-time counts tell FoodFlow how often to schedule pickups and how much to plan for.">
+    <AppShell icon="scale" title="Surplus log" subtitle="Seven days of closing-time counts tell FoodFlow how often to schedule pickups and how much to plan for.">
       <ErrorNote message={error} onRetry={refresh} stale={!!current} />
       {!current ? <Loading what="surplus log" rows={1} /> : (
         <SurplusLog path="/restaurants/me/surplus-log" data={current} onChange={(d) => { setSaved(d); refresh(); }}

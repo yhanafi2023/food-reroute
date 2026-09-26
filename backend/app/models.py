@@ -73,6 +73,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))  # salted PBKDF2 (app/auth.py), never the password
     name: Mapped[str] = mapped_column(String(160))
     first_name: Mapped[str] = mapped_column(String(80), default="")
     role: Mapped[str] = mapped_column(String(24))
@@ -84,21 +85,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     organization: Mapped[Optional[Organization]] = relationship()
-
-
-class LoginToken(Base):
-    """One-time sign-in: a 6 digit code and a magic-link token, both stored hashed."""
-
-    __tablename__ = "login_tokens"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    code_hash: Mapped[str] = mapped_column(String(128))
-    link_hash: Mapped[str] = mapped_column(String(128), index=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
-    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    attempts: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class RestaurantProfile(Base):

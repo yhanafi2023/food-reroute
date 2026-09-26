@@ -19,7 +19,10 @@ os.environ.pop("MAPBOX_ACCESS_TOKEN", None)
 os.environ.pop("SMTP_HOST", None)
 os.environ.pop("TWILIO_ACCOUNT_SID", None)
 
-from app import clock  # noqa: E402
+from app import auth, clock  # noqa: E402
+
+# Hashing cost is not what these tests check, and each stored hash records its own iteration count.
+auth.PASSWORD_ITERATIONS = 1_000
 
 # Friday 2026-09-25, 7:00 PM in Miami (EDT, UTC-4) = 23:00 UTC
 FRIDAY_7PM = datetime(2026, 9, 25, 23, 0)

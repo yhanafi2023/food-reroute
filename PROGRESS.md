@@ -39,8 +39,8 @@ Last updated 2026-09-26.
 
 The backend API changed; the Next.js app in `frontend/` and `e2e/` still target the old API and will not work
 until updated. Key changes:
-- Sign-in: `POST /auth/request-code` then `POST /auth/verify` (code or magic-link token). No passwords.
-  Demo accounts and the demo code are listed in `backend/app/seed.py`.
+- Sign-in: `POST /auth/login` {email, password}; registration takes a password and returns a session.
+  No email is sent. Demo accounts and the demo password are listed in `backend/app/seed.py`.
 - Roles: restaurant_staff, restaurant_manager, volunteer, org_staff, org_manager, admin.
 - Posting: `POST /rescues` with quantity, unit, category, pickup_deadline, attested (see README API overview).
 - Lifecycle: posted, matched, en_route_pickup, picked_up, en_route_dropoff, delivered, received (+ exits);

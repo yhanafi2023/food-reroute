@@ -64,6 +64,8 @@ def drop_schema(eng: Engine = engine) -> None:
     import app.models  # noqa: F401
 
     with eng.begin() as conn:
+        # retired sign-in code table, no longer a model: drop it or its foreign key blocks dropping users
+        conn.execute(text("DROP TABLE IF EXISTS login_tokens"))
         if eng.dialect.name == "sqlite":
             conn.execute(text("DROP TRIGGER IF EXISTS audit_no_update"))
             conn.execute(text("DROP TRIGGER IF EXISTS audit_no_delete"))
