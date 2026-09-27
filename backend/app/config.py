@@ -49,7 +49,7 @@ TIMEZONE = os.getenv("TIMEZONE", "America/New_York")  # Miami-Dade
 RUN_SCHEDULER = _bool("RUN_SCHEDULER", not SERVERLESS)
 SCHEDULER_SECONDS = int(os.getenv("SCHEDULER_SECONDS", "30"))
 # Shared secret for the scheduled jobs endpoint (sent as "Authorization: Bearer <CRON_SECRET>"). Empty: endpoint off.
-CRON_SECRET = os.getenv("CRON_SECRET", "")
+CRON_SECRET = os.getenv("CRON_SECRET", "").strip()  # a pasted value often carries a trailing newline
 
 # Supabase Auth, accepted alongside FoodFlow's own sessions (app/supabase_auth.py). Empty SUPABASE_URL: off.
 # The secret key (sb_secret_...) also authorizes /internal/jobs/run, sent by pg_net in the "apikey" header.

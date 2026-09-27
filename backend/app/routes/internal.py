@@ -20,7 +20,7 @@ router = APIRouter(tags=["internal"])
 
 
 def _matches(sent: Optional[str], expected: str) -> bool:
-    return bool(expected) and hmac.compare_digest((sent or "").encode(), expected.encode())
+    return bool(expected) and hmac.compare_digest((sent or "").strip().encode(), expected.encode())
 
 
 @router.api_route("/internal/jobs/run", methods=["GET", "POST"], include_in_schema=False)
