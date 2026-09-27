@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import CORS_ORIGIN_REGEX, CORS_ORIGINS, DEMO_MODE, RUN_SCHEDULER, SCHEDULER_SECONDS, check_secrets
 from app.idempotency import IdempotencyMiddleware
 from app.routes import (
-    analytics_routes, auth_routes, community_need, dashboards, internal, me, onboarding, prospects, records, rescues,
+    analytics_routes, auth_routes, community_need, dashboards, geo, internal, me, onboarding, prospects, records, rescues,
     trips,
 )
 
@@ -51,7 +51,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_origin_rege
                    allow_credentials=False, allow_methods=["*"],
                    allow_headers=["*"], expose_headers=["Idempotent-Replayed"])
 for module in (auth_routes, me, onboarding, rescues, trips, records, analytics_routes, prospects, community_need,
-              dashboards, internal):
+              dashboards, internal, geo):
     app.include_router(module.router)
 
 

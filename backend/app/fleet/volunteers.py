@@ -14,14 +14,30 @@ from app.models import Trip, User, VolunteerProfile
 
 EQUIPMENT = {"hot": ("has_insulated_bags", "insulated bags"), "cold": ("has_cooler", "a cooler"),
              "frozen": ("has_cooler", "a cooler")}
+LIVE_LOCATION_MIN = 30  # a shared GPS fix newer than this replaces the home location for distance and ETA
+
+
+def origin(v: VolunteerProfile, now: datetime) -> Point:
+    """Where the volunteer starts from: their live location when recent, else home."""
+    if v.last_lat is not None and v.last_location_at and now - v.last_location_at <= timedelta(minutes=LIVE_LOCATION_MIN):
+        return (v.last_lat, v.last_lng)
+    return (v.home_lat, v.home_lng)
+
+
+def is_available(v: VolunteerProfile, at: datetime, minutes: float = 0) -> bool:
+    """Inside the weekly schedule, or switched on with "I'm free now" (available_until)."""
+    if v.available_until and at < v.available_until:
+        return True
+    return intake.available_at(v.availability or {}, at, minutes)
 
 
 class VolunteerProvider:
     mode = "volunteer"
     simulated = False
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, only_user_id: int | None = None):
         self.db = db
+        self.only_user_id = only_user_id  # a volunteer claiming one rescue: nobody else is considered
 
     def _busy_ids(self) -> set:
         rows = self.db.query(Trip.volunteer_user_id).filter(
@@ -37,13 +53,16 @@ class VolunteerProvider:
                 .filter(User.active.is_(True)).all())
         near = []
         for v, u in rows:
+            if self.only_user_id is not None and u.id != self.only_user_id:
+                continue
             if u.id in excluded:
                 why["declined_or_no_show"] += 1
                 continue
             if u.id in busy:
                 why["busy"] += 1
                 continue
-            dist = haversine_miles(v.home_lat, v.home_lng, pickup[0], pickup[1])
+            start = origin(v, start_at)
+            dist = haversine_miles(start[0], start[1], pickup[0], pickup[1])
             if dist > v.max_distance_mi:
                 why["too_far"] += 1
                 continue
@@ -57,10 +76,10 @@ class VolunteerProvider:
             near.append((v, u, dist))
         if not near:
             return [], why
-        mins, est, _ = clients.travel([((v.home_lat, v.home_lng), pickup, 0) for v, _, _ in near])
+        mins, est, _ = clients.travel([(origin(v, start_at), pickup, 0) for v, _, _ in near])
         out = []
         for (v, u, dist), m in zip(near, mins):
-            if not intake.available_at(v.availability or {}, start_at, m["p50"] + trip_minutes):
+            if not is_available(v, start_at, m["p50"] + trip_minutes):
                 why["unavailable_now"] += 1
                 continue
             out.append({"user": u, "profile": v, "miles": dist, "pickup_minutes": m["p50"], "estimated": est})
@@ -69,7 +88,7 @@ class VolunteerProvider:
 
     def availability(self, zone: str = "", window: Tuple[datetime, datetime] = None) -> Dict[str, Any]:
         start = window[0] if window else datetime.utcnow()
-        n = sum(1 for v in self.db.query(VolunteerProfile).all() if intake.available_at(v.availability or {}, start))
+        n = sum(1 for v in self.db.query(VolunteerProfile).all() if is_available(v, start))
         return {"mode": self.mode, "simulated": False, "volunteers_available": n}
 
     def quote(self, pickup: Point, dropoff: Point, cargo: Cargo, start_at: datetime) -> Quote:

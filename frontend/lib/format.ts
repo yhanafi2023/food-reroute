@@ -37,3 +37,9 @@ export function defaultDeadline(): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
 }
+
+/** The trip carrying a rescue now: a declined, cancelled or no-show trip stays in the list, so not trips[0]. */
+export function currentTrip<T extends { status: string }>(trips: T[]): T | undefined {
+  const live = trips.filter((t) => !["reassigned", "cancelled"].includes(t.status));
+  return live[live.length - 1] ?? trips[trips.length - 1];
+}

@@ -93,7 +93,7 @@ def test_sign_in_responses_are_never_stored_or_replayed(client):
 
 def test_registration_and_manager_staff_management(client):
     r = client.post("/auth/register-organization", json={
-        "kind": "restaurant", "organization_name": "New Kitchen (test)", "lat": 25.76, "lng": -80.37,
+        "kind": "restaurant", "organization_name": "New Kitchen (test)", "address": "100 Test St, Miami FL", "lat": 25.76, "lng": -80.37,
         "manager_name": "Ana Test", "manager_email": "ana@newkitchen.example.com", "manager_password": "ana-password"})
     assert r.status_code == 200 and r.json()["user"]["role"] == "restaurant_manager"
     mgr = signin(client, "ana@newkitchen.example.com", "ana-password")

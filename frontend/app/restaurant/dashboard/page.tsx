@@ -7,7 +7,7 @@ import RescueSequence from "@/components/RescueSequence";
 import StatusTimeline from "@/components/StatusTimeline";
 import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { clock, defaultDeadline, number, until } from "@/lib/format";
+import { clock, currentTrip, defaultDeadline, number, until } from "@/lib/format";
 import type { CreateRescueResponse, FoodCategory, FoodUnit, MatchingExplanation, Rescue } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
@@ -20,6 +20,18 @@ const CATEGORIES: { value: FoodCategory; label: string }[] = [
 ];
 
 const EMPTY = { quantity: "6", unit: "tray" as FoodUnit, category: "hot" as FoodCategory, pickup_deadline: "", description: "", attested: false };
+
+// The volunteer types this at pickup to prove they have the food; until it is shown here, nobody can.
+function PickupCode({ rescue }: { rescue: Rescue }) {
+  const waiting = ["posted", "matched", "en_route_pickup"].includes(rescue.status);
+  if (!rescue.pickup_code || !waiting) return null;
+  return (
+    <div className="alert alert-info flex flex-wrap items-center justify-between gap-3">
+      <span>Give this code to the driver when they pick up the food.</span>
+      <span className="mono font-semibold" style={{ fontSize: "var(--t-2xl)", letterSpacing: "0.2em" }}>{rescue.pickup_code}</span>
+    </div>
+  );
+}
 
 export default function RestaurantDashboardPage() {
   const user = useRequireRole(["restaurant_staff", "restaurant_manager"]);
@@ -147,8 +159,9 @@ export default function RestaurantDashboardPage() {
               <RescueAreaMap rescue={result.rescue} />
             </>
           )}
-          {!finding && result?.matching.matched && latest?.trips[0] && (
-            <MatchCard rescue={latest} trip={latest.trips[0]} explanation={explanation} />
+          {!finding && latest && <PickupCode rescue={latest} />}
+          {!finding && result?.matching.matched && latest && currentTrip(latest.trips) && (
+            <MatchCard rescue={latest} trip={currentTrip(latest.trips)!} explanation={explanation} />
           )}
           {!finding && !result && <p className="panel text-ink-2">Post a rescue to see the match, the route, and why FoodFlow chose it.</p>}
 
@@ -156,7 +169,7 @@ export default function RestaurantDashboardPage() {
             <section className="flex flex-col gap-3">
               <h3>Your rescues</h3>
               {history.map((r) => {
-                const trip = r.trips[0];
+                const trip = currentTrip(r.trips);
                 const isActive = trip && !["received", "cancelled", "rejected", "expired", "reassigned"].includes(trip.status);
                 return isActive ? (
                   <section key={r.id} className="panel flex flex-col gap-4" aria-label={`Rescue #${r.id}`}>
@@ -164,6 +177,7 @@ export default function RestaurantDashboardPage() {
                       <strong>{r.est_meals} meals · {trip.carrier.type === "volunteer" ? trip.carrier.first_name : trip.carrier.label}</strong>
                       <span className="chip">pickup {until(r.pickup_deadline)}</span>
                     </div>
+                    <PickupCode rescue={r} />
                     <div className="grid gap-4 md:grid-cols-[240px_1fr]">
                       <StatusTimeline trip={trip} />
                       <DeliveryMap rescue={r} trip={trip} height={280} />

@@ -53,3 +53,9 @@ __pycache__/
 # playwright
 test-results/
 playwright-report/
+
+# demo data export (contains password hashes) and its credentials
+demo_data*.sql
+demo_credentials.txt
+supabase_schema.sql
+supabase_update.sql

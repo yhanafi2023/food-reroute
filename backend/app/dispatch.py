@@ -85,7 +85,10 @@ def _restaurant_staffed(rescue: Rescue, at: datetime) -> bool:
     return bool(prof and intake.within_local_until(prof.staffed_until or {}, at + timedelta(minutes=LOAD_WINDOW_MIN)))
 
 
-def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> Dict[str, Any]:
+def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None,
+                 only_volunteer: Optional[int] = None) -> Dict[str, Any]:
+    """Match a posted rescue. `only_volunteer`: a volunteer claiming it from the open list, so only
+    they are considered (even if they declined it earlier) and no simulated vehicle competes."""
     now = clock.now()
     if rescue.status != "posted" or rescue.is_draft:
         return {"matched": False, "reason": f"rescue is {rescue.status}"}
@@ -93,9 +96,12 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> D
         return {"matched": False, "reason": "past the pickup deadline or safe-until time"}
     attempt = _next_attempt(db, rescue.id)
     r_pt = (rescue.restaurant.lat, rescue.restaurant.lng)
-    modes = set(rescue.allowed_modes or ["volunteer"])
+    modes = {"volunteer"} if only_volunteer else set(rescue.allowed_modes or ["volunteer"])
+    if only_volunteer:
+        rescue.excluded_volunteer_ids = [v for v in rescue.excluded_volunteer_ids or [] if v != only_volunteer]
     cargo = Cargo(rescue.est_meals, rescue.category, rescue.restaurant.restaurant_profile.totes_on_hand)
-    vol_provider, av, robot = VolunteerProvider(db), SimulatedWaymoProvider(db), SimulatedSidewalkRobotProvider(db)
+    vol_provider = VolunteerProvider(db, only_user_id=only_volunteer)
+    av, robot = SimulatedWaymoProvider(db), SimulatedSidewalkRobotProvider(db)
 
     # 1. Earliest realistic pickup across allowed modes.
     vol_cands, vol_why = ([], {})
@@ -158,7 +164,7 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None) -> D
     if not plans:
         why = describe_unavailable(vol_why) if "volunteer" in modes else "volunteers not allowed for this rescue"
         _log_unmatched(db, rescue, actor, f"no carrier can make it in time: {why}; AV: {av_note or 'not feasible'}", attempt)
-        return {"matched": False, "reason": "no feasible carrier", "attempt": attempt}
+        return {"matched": False, "reason": "no feasible carrier", "why": why, "attempt": attempt}
 
     # 5. Create trips.
     trips = [create_trip(db, rescue, plan, est_travel or est_alloc, vol_why, av_note, alloc_source) for plan in plans]

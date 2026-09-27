@@ -93,7 +93,7 @@ def test_capacity_and_tonights_need(client):
 
 
 def test_incomplete_org_receives_nothing(client):
-    client.post("/auth/register-organization", json={"kind": "receiver", "organization_name": "Brand New Shelter",
+    client.post("/auth/register-organization", json={"kind": "receiver", "organization_name": "Brand New Shelter", "address": "400 Test St, Miami FL",
                "lat": 25.762, "lng": -80.369, "manager_name": "New Manager", "manager_email": "new@shelter.example.com",
                "manager_password": "new-manager-password"})
     h = signin(client, EMAILS["restaurant_staff"])

@@ -1,19 +1,22 @@
 """Carriers and receiving orgs: offers, handoffs with codes, receipt, re-routing (sections 5, 6d, 7)."""
-from typing import Literal, Optional
+from datetime import timedelta
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app import audit, clock, dispatch, handoff, lifecycle, notify
+from app import audit, clock, dispatch, handoff, intake, lifecycle, notify
 from app.assumptions import ASSUMPTIONS
 from app.auth import ADMIN, ORG_ANY, VOLUNTEER, get_current_user
 from app.db import get_db
 from app.fleet import geofence
+from app.fleet.base import Cargo
 from app.fleet.simulated import SimulatedSidewalkRobotProvider, SimulatedWaymoProvider
-from app.fleet.volunteers import VolunteerProvider
-from app.models import ReceiverProfile, Trip, TripStop, User, VolunteerProfile
-from app.views import rescue_json, stop_json, trip_json
+from app.fleet.volunteers import EQUIPMENT, VolunteerProvider, is_available, origin
+from app.intelligence.eta.features import haversine_miles
+from app.models import ReceiverProfile, Rescue, Trip, TripStop, User, VolunteerProfile
+from app.views import iso, rescue_json, stop_json, trip_json
 
 router = APIRouter(tags=["trips"])
 
@@ -97,16 +100,134 @@ def get_trip(trip_id: int, user: User = Depends(get_current_user), db: Session =
     raise HTTPException(404, "Trip not found")
 
 
-@router.post("/trips/{trip_id}/accept")
-def accept(trip_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
-    t = _my_trip(db, trip_id, user)
+def _accept(db: Session, t: Trip, user: User, where: Where) -> None:
     _location(db, user, where)
     lifecycle.set_trip_status(db, t, "en_route_pickup", user, where.lat, where.lng)
     notify.send(db, db.query(User).filter_by(organization_id=t.rescue.restaurant_org_id, active=True).all(), "matched",
                 "Volunteer on the way", f"{user.first_name} accepted rescue #{t.rescue_id}, pickup around "
                 f"{clock.fmt_local(t.eta_pickup_at)}.", dedupe=f"accepted:{t.id}")
+
+
+@router.post("/trips/{trip_id}/accept")
+def accept(trip_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
+    t = _my_trip(db, trip_id, user)
+    _accept(db, t, user, where)
     db.commit()
     return trip_json(t, user)
+
+
+# ---------- finding work: "I'm free now", open rescues nearby, claim one ----------
+
+YOUR_REASON = {"too_far": "it is farther than your maximum distance",
+               "no_equipment": "this food needs a cooler or insulated bags you don't have",
+               "too_small": "your vehicle doesn't have room for this many meals",
+               "unavailable_now": "you are not available right now"}
+
+
+class FreeNowIn(Where):
+    minutes: int = Field(ge=0, le=12 * 60, description="0 turns it off")
+
+
+def _busy(db: Session, user: User) -> bool:
+    return db.query(Trip).filter(Trip.volunteer_user_id == user.id,
+                                 Trip.status.in_(("matched", "en_route_pickup", "picked_up", "en_route_dropoff"))).first() is not None
+
+
+def _open_rescues(db: Session) -> List[Rescue]:
+    now = clock.now()
+    return (db.query(Rescue).filter(Rescue.status == "posted", Rescue.is_draft.is_(False), Rescue.pickup_deadline > now,
+                                    Rescue.safe_until > now).order_by(Rescue.pickup_deadline).all())
+
+
+def _availability_json(v: VolunteerProfile) -> dict:
+    now = clock.now()
+    free = v.available_until if v.available_until and v.available_until > now else None
+    return {"available_until": iso(free) if free else None,
+            "on_schedule_now": intake.available_at(v.availability or {}, now),
+            "available_now": is_available(v, now)}
+
+
+@router.get("/volunteers/me/availability")
+def my_availability(user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
+    return _availability_json(db.get(VolunteerProfile, user.id))
+
+
+@router.post("/volunteers/me/availability")
+def set_free_now(body: FreeNowIn, user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
+    """Switch "I'm free now" on for `minutes` (or off with 0). Switching on offers the most urgent
+    open rescue this volunteer can take straight away, instead of waiting for the next job run."""
+    v = db.get(VolunteerProfile, user.id)
+    _location(db, user, body)
+    v.available_until = clock.now() + timedelta(minutes=body.minutes) if body.minutes else None
+    offered = None
+    if body.minutes and not _busy(db, user):
+        for rescue in _open_rescues(db):
+            if dispatch.run_matching(db, rescue, user, only_volunteer=user.id).get("matched"):
+                offered = rescue.id
+                break
+    audit.log(db, "volunteer_free_now" if body.minutes else "volunteer_free_off", entity="user", actor=user,
+              details={"minutes": body.minutes, "offered_rescue": offered})
+    db.commit()
+    return {**_availability_json(v), "offered_rescue_id": offered}
+
+
+@router.get("/volunteers/me/open-rescues")
+def open_rescues(user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
+    """Posted rescues nobody has taken yet, nearest first, with whether this volunteer can carry them."""
+    v = db.get(VolunteerProfile, user.id)
+    here = origin(v, clock.now())
+    out = []
+    for r in _open_rescues(db):
+        miles = haversine_miles(here[0], here[1], r.restaurant.lat, r.restaurant.lng)
+        if miles > max(v.max_distance_mi, 1) * 2:
+            continue
+        need = EQUIPMENT.get(r.category)
+        problems = []
+        if miles > v.max_distance_mi:
+            problems.append(f"{miles:.1f} mi away, past your {v.max_distance_mi:g} mi limit")
+        if need and not getattr(v, need[0]):
+            problems.append(f"needs {need[1]}")
+        if v.capacity_meals < r.est_meals:
+            problems.append(f"{r.est_meals} meals, more than your {v.capacity_meals}-meal capacity")
+        out.append({"id": r.id, "restaurant": {"name": r.restaurant.name, "address": r.restaurant.address,
+                                               "lat": r.restaurant.lat, "lng": r.restaurant.lng},
+                    "est_meals": r.est_meals, "category": r.category, "description": r.description,
+                    "allergens": r.allergens or [], "pickup_deadline": iso(r.pickup_deadline),
+                    "miles": round(miles, 1), "can_take": not problems, "problems": problems})
+    out.sort(key=lambda o: (not o["can_take"], o["miles"]))
+    return {"rescues": out, "busy": _busy(db, user), **_availability_json(v)}
+
+
+@router.post("/volunteers/me/open-rescues/{rescue_id}/claim")
+def claim(rescue_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
+    """Take an open rescue: match it to this volunteer only and accept it in one step."""
+    rescue = db.get(Rescue, rescue_id)
+    if rescue is None or rescue.is_draft:
+        raise HTTPException(404, "Rescue not found")
+    if _busy(db, user):
+        raise HTTPException(409, "Finish or cancel your current trip before taking another one")
+    if rescue.status != "posted":
+        raise HTTPException(409, "Someone else already took this rescue")
+    _location(db, user, where)
+    v = db.get(VolunteerProfile, user.id)
+    soon = clock.now() + timedelta(hours=2)
+    if not v.available_until or v.available_until < soon:
+        v.available_until = soon  # taking a job means being free for it
+    fits, why = VolunteerProvider(db, only_user_id=user.id).candidates(
+        (rescue.restaurant.lat, rescue.restaurant.lng), Cargo(rescue.est_meals, rescue.category), clock.now(), 0)
+    if not fits:
+        db.commit()
+        reasons = [YOUR_REASON[k] for k, n in why.items() if n and k in YOUR_REASON]
+        raise HTTPException(409, "You can't take this rescue: " + ("; ".join(reasons) or "it is not open to you"))
+    result = dispatch.run_matching(db, rescue, user, only_volunteer=user.id)
+    trip = db.query(Trip).filter_by(rescue_id=rescue.id, volunteer_user_id=user.id, status="matched").first()
+    if not result.get("matched") or trip is None:
+        db.commit()  # keep the matching explanation for the restaurant and admins
+        why = result.get("why") or result.get("reason", "it cannot be matched right now")
+        raise HTTPException(409, f"You can't take this rescue: {why}")
+    _accept(db, trip, user, where)
+    db.commit()
+    return trip_json(trip, user)
 
 
 @router.post("/trips/{trip_id}/decline")

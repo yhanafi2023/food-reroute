@@ -233,6 +233,8 @@ class VolunteerProfile(Base):
     last_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     last_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     last_location_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # "I'm free now": counts as available until this time, on top of the weekly schedule
+    available_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user: Mapped[User] = relationship()
 

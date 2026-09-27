@@ -27,7 +27,8 @@ class RegisterOrgIn(BaseModel):
     kind: Literal["restaurant", "receiver"]
     organization_name: str = Field(min_length=1, max_length=160)
     legal_name: str = Field(default="", max_length=200)
-    address: str = Field(default="", max_length=255)
+    # required: it is the pickup / drop-off point every route starts or ends at (lat/lng come from /geo/search)
+    address: str = Field(min_length=5, max_length=255)
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     manager_name: str = Field(min_length=1, max_length=160)

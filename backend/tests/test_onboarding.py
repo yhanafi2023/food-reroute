@@ -21,7 +21,7 @@ def client(fake_clock):
 
 def _new_org(client):
     r = client.post("/auth/register-organization", json={
-        "kind": "receiver", "organization_name": "Test Pantry", "lat": 25.75, "lng": -80.36,
+        "kind": "receiver", "organization_name": "Test Pantry", "address": "200 Test St, Miami FL", "lat": 25.75, "lng": -80.36,
         "manager_name": "Pat Test", "manager_email": "pat@pantry.example.com", "manager_password": "pat-password"})
     assert r.status_code == 200, r.text
     return signin(client, "pat@pantry.example.com", "pat-password")

@@ -6,7 +6,7 @@ import Icon from "@/components/Icon";
 import DeliveryMap from "@/components/DeliveryMap";
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { clock, number } from "@/lib/format";
+import { clock, currentTrip, number } from "@/lib/format";
 import type { OrgDeliveries, OrgDeliveryItem } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
@@ -71,19 +71,21 @@ export default function OrganizationDashboardPage() {
             {data.incoming.length === 0 && data.to_confirm.length === 0 && (
               <p className="panel text-ink-2">Nothing on the way right now. Matched deliveries appear here with a live map.</p>
             )}
-            {[...data.to_confirm, ...data.incoming].map((item) => (
+            {[...data.to_confirm, ...data.incoming].map((item) => {
+              const trip = item.rescue.trips.find((t) => t.stops.some((s) => s.id === item.stop.id)) ?? currentTrip(item.rescue.trips);
+              return (
               <article key={item.stop.id} className="panel panel-accent flex flex-col gap-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex flex-col gap-1">
                     <strong className="flex items-center gap-2 text-xl" style={{ fontFamily: "var(--ff-display)" }}><Icon name="van" size={30} />{item.stop.allocated_meals} meals incoming</strong>
                     <span className="text-ink-2">
-                      {item.rescue.trips[0]?.carrier.type === "volunteer" ? item.rescue.trips[0].carrier.first_name : item.rescue.trips[0]?.carrier.label} · from {item.rescue.restaurant.name}
+                      {trip?.carrier.type === "volunteer" ? trip.carrier.first_name : trip?.carrier.label} · from {item.rescue.restaurant.name}
                     </span>
                     <span className="text-sm text-ink-3">{item.rescue.category.replace("_", "-")} food · pickup by {clock(item.rescue.pickup_deadline)}</span>
                   </div>
                   <span className={`chip ${item.stop.status === "delivered" ? "chip-good" : ""}`}>{item.stop.status === "delivered" ? "Delivered, please confirm" : "on the way"}</span>
                 </div>
-                {item.rescue.trips[0] && <DeliveryMap rescue={item.rescue} trip={item.rescue.trips[0]} height={280} />}
+                {trip && <DeliveryMap rescue={item.rescue} trip={trip} height={280} />}
                 {item.stop.status === "delivered" ? (
                   <ReceiptForm item={item} busy={busy}
                     onSubmit={(condition, receivedMeals, noteText) => act(() => api(`/stops/${item.stop.id}/receipt`, {
@@ -91,10 +93,19 @@ export default function OrganizationDashboardPage() {
                     }), condition === "rejected" ? "Marked as rejected." : `Confirmed ${receivedMeals} meals. Thank you!`)}
                   />
                 ) : (
-                  <p className="text-sm text-ink-3">You can confirm receipt once the carrier marks it delivered.</p>
+                  <>
+                    {item.stop.dropoff_code && (
+                      <div className="alert alert-info flex flex-wrap items-center justify-between gap-3">
+                        <span>Give this code to the driver when they hand over the food.</span>
+                        <span className="mono font-semibold" style={{ fontSize: "var(--t-2xl)", letterSpacing: "0.2em" }}>{item.stop.dropoff_code}</span>
+                      </div>
+                    )}
+                    <p className="text-sm text-ink-3">You can confirm receipt once the carrier marks it delivered.</p>
+                  </>
                 )}
               </article>
-            ))}
+              );
+            })}
           </section>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]">

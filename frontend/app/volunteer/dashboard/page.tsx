@@ -56,12 +56,71 @@ function OfferCard({ trip, busy, onAccept, onDecline }: { trip: Trip; busy: bool
   );
 }
 
+interface OpenRescue {
+  id: number; restaurant: { name: string; address: string }; est_meals: number; category: string; description: string;
+  allergens: string[]; pickup_deadline: string; miles: number; can_take: boolean; problems: string[];
+}
+interface OpenRescues { rescues: OpenRescue[]; busy: boolean; available_now: boolean; available_until: string | null; on_schedule_now: boolean }
+
+// Shown whenever there is no offer or active trip: go "free now" (FoodFlow offers the most urgent
+// rescue right away) or pick one yourself from the open rescues nearby.
+function FindWork({ busy, act }: { busy: boolean; act: (fn: () => Promise<unknown>) => Promise<void> }) {
+  const { data, refresh } = usePoll<OpenRescues>("/volunteers/me/open-rescues");
+  if (!data) return <div className="skeleton h-40" aria-hidden />;
+  const setFree = (minutes: number) => act(async () => { await api("/volunteers/me/availability", { method: "POST", body: { minutes } }); await refresh(); });
+  const take = (id: number) => act(async () => { await api(`/volunteers/me/open-rescues/${id}/claim`, { method: "POST", body: {} }); await refresh(); });
+  return (
+    <section className="panel panel-accent flex flex-col gap-4" aria-labelledby="find-work">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="find-work" className="flex items-center gap-3"><Icon name="schedule" size={30} />Ready to help?</h2>
+        {data.available_until ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="chip chip-good">Free until {clock(data.available_until)}</span>
+            <button className="btn btn-ghost" disabled={busy} onClick={() => setFree(0)}>Stop</button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-ink-2">{data.on_schedule_now ? "You're on your schedule now." : "I'm free for"}</span>
+            {!data.on_schedule_now && [60, 120, 240].map((m) => (
+              <button key={m} className="btn btn-primary" disabled={busy} onClick={() => setFree(m)}>{m / 60} hr</button>
+            ))}
+          </div>
+        )}
+      </div>
+      <p className="text-ink-2">
+        {data.available_now
+          ? "New offers appear here automatically. Or take one of the open rescues below yourself."
+          : "Switch on \"I'm free\" and FoodFlow offers you the most urgent rescue nearby right away, or take one below."}
+      </p>
+      <h3>Open rescues near you</h3>
+      {data.rescues.length === 0 ? (
+        <p className="text-ink-3">No open rescues right now. Restaurants usually post around closing time, 8 to 11 PM.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line">
+          {data.rescues.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <span className="flex flex-col">
+                <strong>{r.est_meals} meals · {r.restaurant.name}</strong>
+                <span className="text-sm text-ink-2">
+                  {r.category.replace("_", "-")}{r.description ? ` · ${r.description}` : ""} · {r.miles} mi · pick up {until(r.pickup_deadline)}
+                </span>
+                {!r.can_take && <span className="text-sm text-ink-3">Can&apos;t take: {r.problems.join("; ")}</span>}
+              </span>
+              <button className="btn btn-primary" disabled={busy || !r.can_take || data.busy} onClick={() => take(r.id)}>Take it</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function PickupForm({ busy, onSubmit }: { busy: boolean; onSubmit: (code: string, meals: number) => void }) {
   const [code, setCode] = useState("");
   const [meals, setMeals] = useState("");
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onSubmit(code, Number(meals)); }}>
-      <p className="text-ink-2">Ask the restaurant for the pickup code.</p>
+      <p className="text-ink-2">Ask the restaurant for the 4-digit pickup code. It is on their FoodFlow screen for this rescue.</p>
       <div className="grid grid-cols-2 gap-3">
         <label className="field"><span>Pickup code</span><input className="input mono" required value={code} onChange={(e) => setCode(e.target.value)} /></label>
         <label className="field"><span>Meals picked up</span><input className="input num" type="number" min={1} required value={meals} onChange={(e) => setMeals(e.target.value)} /></label>
@@ -75,7 +134,7 @@ function DeliverForm({ stopId, orgName, busy, onSubmit }: { stopId: number; orgN
   const [code, setCode] = useState("");
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onSubmit(stopId, code); }}>
-      <p className="text-ink-2">Ask {orgName} for the drop-off code.</p>
+      <p className="text-ink-2">Ask {orgName} for the 4-digit drop-off code. It is on their FoodFlow deliveries screen.</p>
       <label className="field"><span>Drop-off code</span><input className="input mono" required value={code} onChange={(e) => setCode(e.target.value)} /></label>
       <button className="btn btn-primary btn-lg btn-block" style={{ minHeight: 64, fontSize: "var(--t-lg)" }} disabled={busy}>Delivered to {orgName}</button>
     </form>
@@ -182,12 +241,7 @@ export default function VolunteerDashboardPage() {
               onDeliver={(stopId, code) => act(() => api(`/stops/${stopId}/deliver`, { method: "POST", body: { code } }))} />
           )}
 
-          {!offer && !active && (
-            <div className="panel flex flex-col gap-2">
-              <h3 className="flex items-center gap-3"><Icon name="schedule" size={30} />Waiting for the next rescue</h3>
-              <p className="text-ink-2">New offers appear here automatically, based on your availability schedule. Keep this page open.</p>
-            </div>
-          )}
+          {!offer && !active && <FindWork busy={busy} act={act} />}
 
           <div className="grid gap-4 md:grid-cols-[240px_1fr]">
             <Stat label="Meals moved" icon="hot-meal" value={number(totalMeals)} note={`${data.history.length} trips`} />

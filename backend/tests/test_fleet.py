@@ -108,7 +108,7 @@ def test_av_never_chosen_when_restaurant_unstaffed_or_outside_zone(client, fake_
     r = post(client, "staff@casa-demo.example.com")  # Casa is staffed until 11:30 PM
     assert all(t["mode"] != "waymo_sim" for t in r["trips"])
     assert r["status"] == "posted"
-    client.post("/auth/register-organization", json={"kind": "restaurant", "organization_name": "South Kitchen (test)",
+    client.post("/auth/register-organization", json={"kind": "restaurant", "organization_name": "South Kitchen (test)", "address": "300 Test St, Miami FL",
                "lat": 25.700, "lng": -80.370, "manager_name": "Kim Test", "manager_email": "kim@south.example.com",
                "manager_password": "kim-password"})
     with SessionLocal() as db:

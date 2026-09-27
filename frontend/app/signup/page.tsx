@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AddressPicker, { type PickedAddress } from "@/components/AddressPicker";
 import { TopNav } from "@/components/AppShell";
 import Icon, { IconTile, type IconName } from "@/components/Icon";
 import { HOME_FOR_ROLE, PASSWORD_MIN_LENGTH, useAuth } from "@/lib/auth";
@@ -21,7 +22,8 @@ export default function SignupPage() {
   const { register } = useAuth();
   const router = useRouter();
   const [type, setType] = useState<AccountType>("restaurant");
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", phone: "", orgName: "", address: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", phone: "", orgName: "" });
+  const [place, setPlace] = useState<PickedAddress | null>(null);
   const [loc, setLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,11 @@ export default function SignupPage() {
       setError("The passwords do not match.");
       return;
     }
+    // Every pickup and drop-off is routed to this point, so it must come from the address, not a guess.
+    if (type !== "volunteer" && !place) {
+      setError("Find your address and pick it from the list, so drivers are routed to the right place.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const { lat, lng } = loc ?? DEFAULT_LOCATION;
@@ -58,7 +65,7 @@ export default function SignupPage() {
             name: form.name, email: form.email, password: form.password, phone: form.phone, home_lat: lat, home_lng: lng,
           })
         : await register("/auth/register-organization", {
-            kind: type, organization_name: form.orgName, address: form.address, lat, lng,
+            kind: type, organization_name: form.orgName, address: place!.address, lat: place!.lat, lng: place!.lng,
             manager_name: form.name, manager_email: form.email, manager_password: form.password, manager_phone: form.phone,
           });
       router.push(HOME_FOR_ROLE[u.role]);
@@ -103,13 +110,15 @@ export default function SignupPage() {
           <input className="input" type="password" required minLength={PASSWORD_MIN_LENGTH} value={form.confirm} onChange={set("confirm")} autoComplete="new-password" />
         </label>
         <label className="field"><span>Phone (optional)</span><input className="input" value={form.phone} onChange={set("phone")} autoComplete="tel" /></label>
-        {type !== "volunteer" && (
-          <label className="field"><span>Address (optional)</span><input className="input" value={form.address} onChange={set("address")} autoComplete="street-address" /></label>
+        {type !== "volunteer" ? (
+          <AddressPicker label={type === "restaurant" ? "Restaurant address (where food is picked up)" : "Address (where food is dropped off)"}
+            value={place} onChange={setPlace} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="btn btn-ghost pl-3" onClick={shareLocation}><Icon name="locate" size={24} />Use my location</button>
+            {locNote && <span className="text-sm text-ink-2" role="status">{locNote}</span>}
+          </div>
         )}
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn btn-ghost pl-3" onClick={shareLocation}><Icon name="locate" size={24} />Use my location</button>
-          {locNote && <span className="text-sm text-ink-2" role="status">{locNote}</span>}
-        </div>
         {error && <div className="alert alert-bad" role="alert">{error}</div>}
         <button className="btn btn-primary btn-lg" disabled={busy}>{busy ? "Creating account..." : "Create account"}</button>
         <p className="text-sm text-ink-2">Already have an account? <Link className="font-semibold text-accent underline" href="/login">Log in</Link></p>
