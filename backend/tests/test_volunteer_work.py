@@ -119,3 +119,14 @@ def test_a_failed_claim_says_exactly_why(client):
     assert res.status_code == 409
     detail = res.json()["detail"]
     assert "after its pickup deadline" in detail and "registered nearby" not in detail, detail
+
+
+def test_driver_can_cancel_a_taken_trip_before_pickup(client):
+    rid = post_open(client)["id"]
+    h = signin(client, EMAILS["volunteer"])
+    trip = client.post(f"/volunteers/me/open-rescues/{rid}/claim", headers=h, json={}).json()
+    assert client.post(f"/trips/{trip['id']}/cancel", headers=h).status_code == 200
+    mine = client.get("/volunteers/me/trips", headers=h).json()
+    assert not mine["active"] and not mine["offers"]  # free to take something else
+    rest = signin(client, EMAILS["restaurant_staff"])
+    assert client.get(f"/rescues/{rid}", headers=rest).json()["requeue_count"] == 1  # FoodFlow looks for another driver
