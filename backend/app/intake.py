@@ -50,15 +50,16 @@ class ExceptionIn(BaseModel):
 
 
 class Q1(BaseModel):
-    """When can you receive food?"""
+    """When can you receive food? Only the opening hours are asked; the rest has workable defaults
+    (no cutoff before closing, drivers and simulated vehicles hand over at the front entrance)."""
     schedule: Dict[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"], List[List[str]]]
     exceptions: List[ExceptionIn] = []
-    cutoff_minutes: int = Field(ge=0, le=720)
-    receiving_contact_name: str = Field(min_length=1, max_length=120)
-    receiving_contact_phone: str = Field(min_length=7, max_length=40)
-    receiving_instructions: str = Field(min_length=1, max_length=1000)
-    curbside_ok: bool
-    curb_location: str = Field(default="", max_length=200)
+    cutoff_minutes: int = Field(default=0, ge=0, le=720)
+    receiving_contact_name: str = Field(default="", max_length=120)
+    receiving_contact_phone: str = Field(default="", max_length=40)
+    receiving_instructions: str = Field(default="", max_length=1000)
+    curbside_ok: bool = True
+    curb_location: str = Field(default="Front entrance", max_length=200)
 
     @field_validator("schedule")
     @classmethod
@@ -78,12 +79,18 @@ class Q1(BaseModel):
 
 
 class Q2(BaseModel):
-    """How much food can you take? (plus dietary and allergen rules). Any kind of food is accepted:
-    there is no hot/cold/frozen/shelf-stable distinction."""
+    """How much food do you want a day? Any kind of food is accepted. Dietary and allergen rules and a
+    per-delivery limit are optional; without a limit one delivery may bring the whole day's amount."""
     dietary_rules: List[Literal[DIETARY_RULES]] = []  # type: ignore[valid-type]
     refused_allergens: List[Literal[ALLERGENS]] = []  # type: ignore[valid-type]
-    max_meals_per_delivery: int = Field(gt=0, le=5000)
-    typical_nightly_need: int = Field(ge=0, le=10000)
+    max_meals_per_delivery: Optional[int] = Field(default=None, gt=0, le=10000)
+    typical_nightly_need: int = Field(gt=0, le=10000)
+
+    @model_validator(mode="after")
+    def _default_limit(self):
+        if self.max_meals_per_delivery is None:
+            self.max_meals_per_delivery = self.typical_nightly_need
+        return self
 
 
 class Q3(BaseModel):
@@ -138,7 +145,7 @@ def completeness(db: Session, org_id: int) -> Dict:
     latest = latest_answers(db, org_id)
     due_before = clock.now() - timedelta(days=INTAKE_CONFIRM_DAYS)
     questions = {}
-    for q, title in (("Q1", "When can you receive food?"), ("Q2", "How much food can you take?"),
+    for q, title in (("Q1", "When can you receive food?"), ("Q2", "How much food do you want a day?"),
                      ("Q3", "What records do you need?")):
         a = latest.get(q)
         questions[q] = {
@@ -150,14 +157,18 @@ def completeness(db: Session, org_id: int) -> Dict:
             "confirmed_at": a.confirmed_at.isoformat() + "Z" if a else None,
             "confirmation_due": bool(a and a.confirmed_at < due_before),
         }
-    missing = [q for q, v in questions.items() if not v["answered"]]
+    missing = [q for q in REQUIRED_QUESTIONS if not questions[q]["answered"]]
+    questions["Q3"]["optional"] = True
     return {"organization_id": org_id, "complete": not missing, "missing": missing, "questions": questions,
             "receives_deliveries": not missing,
             "confirm_every_days": INTAKE_CONFIRM_DAYS}
 
 
+REQUIRED_QUESTIONS = ("Q1", "Q2")  # hours and how much food; Q3 (record keeping) is optional
+
+
 def is_complete(db: Session, org_id: int) -> bool:
-    return len(latest_answers(db, org_id)) == 3
+    return all(q in latest_answers(db, org_id) for q in REQUIRED_QUESTIONS)
 
 
 def confirm(db: Session, org_id: int) -> None:

@@ -27,17 +27,19 @@ def _new_org(client):
     return signin(client, "pat@pantry.example.com", "pat-password")
 
 
-def test_org_is_incomplete_until_all_three_answered(client):
+def test_org_is_ready_once_it_gives_hours_and_how_much_food(client):
     mgr = _new_org(client)
     me = client.get("/orgs/me/profile", headers=mgr).json()
     oid = me["organization"]["id"]
     comp = client.get(f"/orgs/{oid}/profile-completeness", headers=mgr).json()
-    assert comp == {**comp, "complete": False, "missing": ["Q1", "Q2", "Q3"], "receives_deliveries": False}
-    spec = ORGS["Demo Night Shelter"]
-    for i, q in enumerate(("Q1", "Q2", "Q3")):
-        r = client.put(f"/orgs/me/intake/{q}", json=spec[q.lower()], headers=mgr)
-        assert r.status_code == 200, r.text
-        assert r.json()["completeness"]["complete"] is (i == 2)
+    assert comp == {**comp, "complete": False, "missing": ["Q1", "Q2"], "receives_deliveries": False}
+    # the whole onboarding form: opening hours, and how much food a day; everything else has defaults
+    r = client.put("/orgs/me/intake/Q1", json={"schedule": {d: [["00:00", "24:00"]] for d in intake.WEEKDAYS}}, headers=mgr)
+    assert r.status_code == 200, r.text and r.json()["completeness"]["complete"] is False
+    r = client.put("/orgs/me/intake/Q2", json={"typical_nightly_need": 200}, headers=mgr)
+    assert r.status_code == 200, r.text
+    assert r.json()["completeness"]["complete"] is True and r.json()["completeness"]["questions"]["Q3"]["optional"]
+    assert r.json()["q2"]["max_meals_per_delivery"] == 200 and r.json()["q1"]["curbside_ok"] is True
     comp = client.get(f"/orgs/{oid}/profile-completeness", headers=mgr).json()
     assert comp["complete"] and comp["questions"]["Q2"]["source"] == "self_reported_by_org"
     assert comp["questions"]["Q1"]["answered_by"] is not None

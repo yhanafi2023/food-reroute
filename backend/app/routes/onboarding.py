@@ -58,7 +58,7 @@ def answer_question(question: Literal["Q1", "Q2", "Q3"], answers: dict = Body(..
 @router.post("/orgs/me/intake/confirm")
 def confirm_intake(user: User = Depends(_org_manager), db: Session = Depends(get_db)):
     if not intake.is_complete(db, user.organization_id):
-        raise HTTPException(409, "Answer all three onboarding questions first")
+        raise HTTPException(409, "Give your opening hours and how much food you want first")
     intake.confirm(db, user.organization_id)
     audit.log(db, "intake_confirmed", entity="organization", actor=user, details={"organization_id": user.organization_id})
     db.commit()

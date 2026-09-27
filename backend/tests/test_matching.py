@@ -97,7 +97,7 @@ def test_incomplete_org_receives_nothing(client):
     _, bad, good = explain(client, h, r["id"])
     assert "Brand New Shelter" not in good
     assert bad["Brand New Shelter"]["reasons"] == [{"code": "onboarding_incomplete",
-                                                    "text": "has not finished the three onboarding questions"}]
+                                                    "text": "has not given its opening hours and how much food it wants"}]
 
 
 def test_drivers_need_no_special_equipment(client):

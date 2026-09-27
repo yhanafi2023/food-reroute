@@ -91,7 +91,7 @@ def register_org(body: RegisterOrgIn, db: Session = Depends(get_db)):
     audit.log(db, "organization_registered", entity="organization", actor=user, details={"organization_id": org.id})
     db.commit()
     return {**_session(user), "organization_id": org.id,
-            "next": "You are signed in." + (" Answer the three onboarding questions before deliveries can be "
+            "next": "You are signed in." + (" Give your opening hours and how much food you want before deliveries can be "
                                              "routed to you." if body.kind == "receiver" else "")}
 
 

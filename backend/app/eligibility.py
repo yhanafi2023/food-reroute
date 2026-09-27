@@ -69,7 +69,7 @@ def check(db: Session, p: ReceiverProfile, rescue: Rescue, pickup_at: datetime, 
     """(reasons it cannot receive, meals it can take). Empty reasons means eligible."""
     reasons: List[Reason] = []
     if not intake.is_complete(db, p.organization_id):
-        return [_r("onboarding_incomplete", "has not finished the three onboarding questions")], 0
+        return [_r("onboarding_incomplete", "has not given its opening hours and how much food it wants")], 0
     ok, why = intake.receiving_check(db, p, arrival_at)
     if not ok:
         reasons.append(why)
