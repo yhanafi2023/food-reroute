@@ -107,3 +107,15 @@ def test_restaurants_and_orgs_must_give_an_address(client):
         "kind": "restaurant", "organization_name": "No Address Cafe", "lat": 25.76, "lng": -80.37,
         "manager_name": "No Address", "manager_email": "na@cafe.example.com", "manager_password": "na-password-1"})
     assert r.status_code == 422 and "address" in r.text
+
+
+def test_a_failed_claim_says_exactly_why(client):
+    h = signin(client, EMAILS["restaurant_staff"])
+    r = client.post("/rescues", headers=h, json={
+        "quantity": 2, "unit": "tray", "attested": True,
+        "pickup_deadline": (clock.now() + timedelta(minutes=1)).isoformat() + "Z"}).json()["rescue"]
+    drv = signin(client, "sam@volunteer-demo.example.com")  # lives about 2 miles away: cannot be there in a minute
+    res = client.post(f"/volunteers/me/open-rescues/{r['id']}/claim", headers=drv, json={})
+    assert res.status_code == 409
+    detail = res.json()["detail"]
+    assert "after its pickup deadline" in detail and "registered nearby" not in detail, detail

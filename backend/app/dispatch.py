@@ -160,9 +160,10 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None,
     legs = [(by_id[a["need_id"]], a["meals"]) for a in allocations if a["meals"] > 0]
 
     # 4. Mode selection.
-    plans = choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now)
+    notes: List[str] = []
+    plans = choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now, notes)
     if not plans:
-        why = describe_unavailable(vol_why) if "volunteer" in modes else "drivers not allowed for this rescue"
+        why = ("; ".join(dict.fromkeys(notes)) or describe_unavailable(vol_why)) if "volunteer" in modes             else "drivers not allowed for this rescue"
         _log_unmatched(db, rescue, actor, f"no carrier can make it in time: {why}; AV: {av_note or 'not feasible'}", attempt)
         return {"matched": False, "reason": "no feasible carrier", "why": why, "attempt": attempt}
 
@@ -190,10 +191,23 @@ def _nearest_neighbor(start, legs):
     return ordered
 
 
-def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[TripPlan]:
+def _blocking(reasons: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    return [r for r in reasons if r["code"] not in ("need_met", "capacity")]
+
+
+def _late_note(rescue: Rescue, pickup_at: datetime) -> str:
+    return (f"a driver would reach {rescue.restaurant.name} around {clock.fmt_local(pickup_at)}, after its pickup deadline "
+            f"({clock.fmt_local(rescue.pickup_deadline)})")
+
+
+def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now, notes: Optional[List[str]] = None) -> List[TripPlan]:
+    """The cheapest feasible set of trips. `notes` collects, in plain English, why driver plans failed."""
+    notes = [] if notes is None else notes
     r_pt = (rescue.restaurant.lat, rescue.restaurant.lng)
     total = sum(m for _, m in legs)
     best_multi: Optional[TripPlan] = None
+    if not legs:
+        notes.append("no organization has room for this food right now")
 
     # Option A: one volunteer for every stop.
     if "volunteer" in modes:
@@ -201,18 +215,24 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
         pts = [r_pt] + [(e["org"].lat, e["org"].lng) for e, _ in ordered]
         seg, est, _ = clients.travel([(a, b, 0 if i == 0 else 1) for i, (a, b) in enumerate(zip(pts, pts[1:]))])
         trip_minutes = LOADING_MIN + sum(s["p50"] for s in seg)
-        cands, _ = vol_provider.candidates(r_pt, Cargo(total), now, trip_minutes,
-                                           exclude=rescue.excluded_volunteer_ids or [])
+        cands, why = vol_provider.candidates(r_pt, Cargo(total), now, trip_minutes,
+                                             exclude=rescue.excluded_volunteer_ids or [])
+        if not cands:
+            notes.append(describe_unavailable(why))
         for c in cands:
             pickup_at = now + timedelta(minutes=c["pickup_minutes"])
             t, plan_legs, ok = pickup_at + timedelta(minutes=LOADING_MIN), [], True
             for (e, meals), s in zip(ordered, seg):
                 t = t + timedelta(minutes=s["p50"])
                 reasons, _ = eligibility.check(db, e["profile"], rescue, pickup_at, t, "volunteer")
-                if [r for r in reasons if r["code"] not in ("need_met", "capacity")]:
+                if _blocking(reasons):
+                    notes.append(f"{e['org'].name} {'; '.join(r['text'] for r in _blocking(reasons))} "
+                                 f"(the driver would arrive around {clock.fmt_local(t)})")
                     ok = False
                     break
                 plan_legs.append(LegPlan(e["org"], e["profile"], meals, t))
+            if ok and pickup_at > rescue.pickup_deadline:
+                notes.append(_late_note(rescue, pickup_at))
             if ok and pickup_at <= rescue.pickup_deadline:
                 cost = sum(leg_cost(db, "volunteer", rescue, now, l.arrival) for l in plan_legs)
                 best_multi = TripPlan("volunteer", plan_legs, pickup_at, cost, volunteer=c["user"],
@@ -246,7 +266,12 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
                 pickup_at = now + timedelta(minutes=c["pickup_minutes"])
                 arrival = pickup_at + timedelta(minutes=LOADING_MIN + seg[0]["p50"])
                 reasons, _ = eligibility.check(db, e["profile"], rescue, pickup_at, arrival, "volunteer")
-                if [r for r in reasons if r["code"] not in ("need_met", "capacity")] or pickup_at > rescue.pickup_deadline:
+                if _blocking(reasons):
+                    notes.append(f"{e['org'].name} {'; '.join(r['text'] for r in _blocking(reasons))} "
+                                 f"(the driver would arrive around {clock.fmt_local(arrival)})")
+                    continue
+                if pickup_at > rescue.pickup_deadline:
+                    notes.append(_late_note(rescue, pickup_at))
                     continue
                 options.append(TripPlan("volunteer", [LegPlan(e["org"], e["profile"], meals, arrival)], pickup_at,
                                         leg_cost(db, "volunteer", rescue, now, arrival), volunteer=c["user"],
