@@ -141,8 +141,9 @@ function DeliverForm({ stopId, orgName, busy, onSubmit }: { stopId: number; orgN
   );
 }
 
-function ActiveTrip({ trip, busy, onPickup, onDeliver }: {
+function ActiveTrip({ trip, busy, onPickup, onDeliver, onCancel }: {
   trip: Trip; busy: boolean; onPickup: (code: string, meals: number) => void; onDeliver: (stopId: number, code: string) => void;
+  onCancel: () => void;
 }) {
   const rescue = useRescue(trip.rescue_id);
   const nextStop = trip.stops.find((s) => s.status === "pending");
@@ -153,6 +154,12 @@ function ActiveTrip({ trip, busy, onPickup, onDeliver }: {
         {rescue && <span className="chip">{rescue.restaurant.name}</span>}
       </div>
       {trip.status === "en_route_pickup" && <PickupForm busy={busy} onSubmit={onPickup} />}
+      {trip.status === "en_route_pickup" && (
+        <button type="button" className="btn btn-ghost self-start" disabled={busy}
+          onClick={() => { if (window.confirm("Cancel this trip? FoodFlow will find another driver for this food.")) onCancel(); }}>
+          Cancel this trip
+        </button>
+      )}
       {trip.status === "picked_up" && nextStop && (
         <p className="alert alert-info">Head to {nextStop.organization.name} to start delivering.</p>
       )}
@@ -238,7 +245,8 @@ export default function DriverDashboardPage() {
           {active && (
             <ActiveTrip trip={active} busy={busy}
               onPickup={(code, meals) => act(() => api(`/trips/${active.id}/pickup`, { method: "POST", body: { code, picked_up_meals: meals } }))}
-              onDeliver={(stopId, code) => act(() => api(`/stops/${stopId}/deliver`, { method: "POST", body: { code } }))} />
+              onDeliver={(stopId, code) => act(() => api(`/stops/${stopId}/deliver`, { method: "POST", body: { code } }))}
+              onCancel={() => act(() => api(`/trips/${active.id}/cancel`, { method: "POST" }))} />
           )}
 
           {!offer && !active && <FindWork busy={busy} act={act} />}
