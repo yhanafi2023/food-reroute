@@ -15,8 +15,8 @@ const DIETARY_RULES = [
   { value: "no_pork", label: "No pork" }, { value: "no_beef", label: "No beef" },
 ];
 const RECORD_FIELDS = [
-  "date_time", "donor_name", "donor_address", "food_description", "food_category", "quantity_meals",
-  "weight_lbs", "temperature_at_receipt", "condition", "received_by_name", "allergen_info", "donor_acknowledgment",
+  "date_time", "donor_name", "donor_address", "food_description", "quantity_meals",
+  "weight_lbs", "condition", "received_by_name", "allergen_info", "donor_acknowledgment",
 ];
 
 interface Profile { organization: { name: string }; completeness: { complete: boolean; missing: string[] } }
@@ -40,14 +40,6 @@ export default function OrgOnboardingPage() {
   const [curbsideOk, setCurbsideOk] = useState(false);
   const [curbLocation, setCurbLocation] = useState("");
 
-  const [acceptsHot, setAcceptsHot] = useState(false);
-  const [hotMaxMinutes, setHotMaxMinutes] = useState("45");
-  const [canHoldHot, setCanHoldHot] = useState(false);
-  const [acceptsCold, setAcceptsCold] = useState(true);
-  const [fridgeCapacity, setFridgeCapacity] = useState("100");
-  const [acceptsFrozen, setAcceptsFrozen] = useState(false);
-  const [freezerCapacity, setFreezerCapacity] = useState("50");
-  const [acceptsShelfStable, setAcceptsShelfStable] = useState(true);
   const [dietaryRules, setDietaryRules] = useState<string[]>([]);
   const [refusedAllergens, setRefusedAllergens] = useState<string[]>([]);
   const [maxMealsPerDelivery, setMaxMealsPerDelivery] = useState("100");
@@ -96,16 +88,12 @@ export default function OrgOnboardingPage() {
     try {
       const p = await api<Profile>("/orgs/me/intake/Q2", {
         method: "PUT", body: {
-          accepts_hot: acceptsHot, hot_max_minutes: acceptsHot ? Number(hotMaxMinutes) : null,
-          can_hold_hot: acceptsHot ? canHoldHot : null, serves_immediately: "",
-          accepts_cold: acceptsCold, fridge_capacity_meals: acceptsCold ? Number(fridgeCapacity) : null,
-          accepts_frozen: acceptsFrozen, freezer_capacity_meals: acceptsFrozen ? Number(freezerCapacity) : null,
-          accepts_shelf_stable: acceptsShelfStable, dietary_rules: dietaryRules, refused_allergens: refusedAllergens,
+          dietary_rules: dietaryRules, refused_allergens: refusedAllergens,
           max_meals_per_delivery: Number(maxMealsPerDelivery), typical_nightly_need: Number(typicalNightlyNeed),
         },
       });
       setProfile(p);
-      setNote("Food handling saved.");
+      setNote("Capacity saved.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
 
@@ -166,21 +154,8 @@ export default function OrgOnboardingPage() {
           </form>
 
           <form className="panel flex flex-col gap-4" onSubmit={submitQ2}>
-            <h2>Q2 · What can you take?</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptsHot} onChange={(e) => setAcceptsHot(e.target.checked)} /> Hot food</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptsCold} onChange={(e) => setAcceptsCold(e.target.checked)} /> Cold food</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptsFrozen} onChange={(e) => setAcceptsFrozen(e.target.checked)} /> Frozen food</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptsShelfStable} onChange={(e) => setAcceptsShelfStable(e.target.checked)} /> Shelf-stable food</label>
-            </div>
-            {acceptsHot && (
-              <div className="grid grid-cols-2 gap-4">
-                <label className="field"><span>Max minutes pickup to arrival</span><input className="input num" type="number" value={hotMaxMinutes} onChange={(e) => setHotMaxMinutes(e.target.value)} /></label>
-                <label className="flex items-center gap-2 pt-6"><input type="checkbox" checked={canHoldHot} onChange={(e) => setCanHoldHot(e.target.checked)} /> Can hold it hot</label>
-              </div>
-            )}
-            {acceptsCold && <label className="field"><span>Fridge capacity (meals)</span><input className="input num" type="number" value={fridgeCapacity} onChange={(e) => setFridgeCapacity(e.target.value)} /></label>}
-            {acceptsFrozen && <label className="field"><span>Freezer capacity (meals)</span><input className="input num" type="number" value={freezerCapacity} onChange={(e) => setFreezerCapacity(e.target.value)} /></label>}
+            <h2>Q2 · How much food can you take?</h2>
+            <p className="text-sm text-ink-2">Any kind of food can come to you. Tell us how much, and any dietary or allergen rules.</p>
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm font-semibold text-ink-2">Dietary rules (only what you strictly require)</legend>
               <div className="flex flex-wrap gap-2">

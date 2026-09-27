@@ -36,7 +36,7 @@ function OfferCard({ trip, busy, onAccept, onDecline }: { trip: Trip; busy: bool
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
         <div className="flex flex-col gap-4">
           <h2>{rescue.est_meals} meals from {rescue.restaurant.name}</h2>
-          <p className="text-ink-2">{rescue.category.replace("_", "-")} food. Pick up by {clock(rescue.pickup_deadline)}.</p>
+          <p className="text-ink-2">{rescue.description ? `${rescue.description}. ` : ""}Pick up by {clock(rescue.pickup_deadline)}.</p>
           <ol className="transit" aria-label="Stops">
             <li className="done"><span className="dot">P</span><span className="label">{rescue.restaurant.name}</span></li>
             {trip.stops.map((s, i) => (
@@ -57,7 +57,7 @@ function OfferCard({ trip, busy, onAccept, onDecline }: { trip: Trip; busy: bool
 }
 
 interface OpenRescue {
-  id: number; restaurant: { name: string; address: string }; est_meals: number; category: string; description: string;
+  id: number; restaurant: { name: string; address: string }; est_meals: number; description: string;
   allergens: string[]; pickup_deadline: string; miles: number; can_take: boolean; problems: string[];
 }
 interface OpenRescues { rescues: OpenRescue[]; busy: boolean; available_now: boolean; available_until: string | null; on_schedule_now: boolean }
@@ -102,7 +102,7 @@ function FindWork({ busy, act }: { busy: boolean; act: (fn: () => Promise<unknow
               <span className="flex flex-col">
                 <strong>{r.est_meals} meals · {r.restaurant.name}</strong>
                 <span className="text-sm text-ink-2">
-                  {r.category.replace("_", "-")}{r.description ? ` · ${r.description}` : ""} · {r.miles} mi · pick up {until(r.pickup_deadline)}
+                  {r.description ? `${r.description} · ` : ""}{r.miles} mi · pick up {until(r.pickup_deadline)}
                 </span>
                 {!r.can_take && <span className="text-sm text-ink-3">Can&apos;t take: {r.problems.join("; ")}</span>}
               </span>
@@ -177,7 +177,7 @@ function ActiveTrip({ trip, busy, onPickup, onDeliver }: {
   );
 }
 
-export default function VolunteerDashboardPage() {
+export default function DriverDashboardPage() {
   const user = useRequireRole("volunteer");
   const { data, error, refresh, updatedAt } = usePoll<VolunteerTrips>(user ? "/volunteers/me/trips" : null);
   const [busy, setBusy] = useState(false);

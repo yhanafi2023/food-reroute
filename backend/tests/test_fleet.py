@@ -28,7 +28,7 @@ def client(fake_clock):
 
 
 def post(client, email, **kw):
-    b = {"quantity": 3, "unit": "bag", "category": "cold", "attested": True,
+    b = {"quantity": 3, "unit": "bag", "attested": True,
          "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z", **kw}
     r = client.post("/rescues", json=b, headers=signin(client, email))
     assert r.status_code == 200, r.text
@@ -53,7 +53,7 @@ def test_late_night_simulated_av_delivery_full_curbside_handoff(client, fake_clo
     t = r["trips"][0]
     assert t["mode"] == "waymo_sim" and t["simulated"] and t["carrier"]["simulated"]
     assert "Simulated Waymo selected" in t["mode_reason"] and "illustrative service zone" in t["mode_reason"]
-    assert "no volunteer can take it" in t["mode_reason"] and t["handoff_state"] == "vehicle_arriving"
+    assert "no driver can take it" in t["mode_reason"] and t["handoff_state"] == "vehicle_arriving"
     fake_clock.current = datetime.fromisoformat(t["eta_pickup"].rstrip("Z")) + timedelta(seconds=1)  # API times are whole seconds
     assert jobs()["vehicle_moves"] == 1
     grill = signin(client, GRILL)
@@ -117,7 +117,7 @@ def test_av_never_chosen_when_restaurant_unstaffed_or_outside_zone(client, fake_
         org.restaurant_profile.totes_on_hand = 10
         db.commit()
     h = signin(client, "kim@south.example.com", "kim-password")
-    b = {"quantity": 3, "unit": "bag", "category": "cold", "attested": True,
+    b = {"quantity": 3, "unit": "bag", "attested": True,
          "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z"}
     r2 = client.post("/rescues", json=b, headers=h).json()["rescue"]
     assert all(t["mode"] != "waymo_sim" for t in r2["trips"])
@@ -128,7 +128,7 @@ def test_no_av_dropoff_where_curbside_is_false(client):
         halal = db.query(Organization).filter_by(name="Demo Halal Pantry").one()
         rescue_org = db.query(Organization).filter_by(name="Casa Demo Cocina").one()
         rescue = Rescue(restaurant_org_id=rescue_org.id, quantity=1, unit="bag", meals_per_unit=4, est_meals=4,
-                        category="shelf_stable", safe_until=clock.now() + timedelta(hours=5),
+                        safe_until=clock.now() + timedelta(hours=5),
                         pickup_deadline=clock.now() + timedelta(hours=2), pickup_code="1234", attested_by=1,
                         attested_at=clock.now(), dietary_tags=["halal"], allergens_declared=True)
         db.add(rescue)
@@ -145,7 +145,7 @@ def test_split_allocation_becomes_point_to_point_av_trips(client):
     with SessionLocal() as db:
         casa = db.query(User).filter_by(email="staff@casa-demo.example.com").one()
         from app import posting
-        res = posting.create_post(db, casa, posting.QuickPost(quantity=10, unit="box", category="shelf_stable", attested=True,
+        res = posting.create_post(db, casa, posting.QuickPost(quantity=10, unit="box", attested=True,
                                                               pickup_deadline=clock.now() + timedelta(minutes=90)))
         rescue = res["rescue"]
         rescue.allowed_modes = ["waymo_sim"]
@@ -161,15 +161,13 @@ def test_split_allocation_becomes_point_to_point_av_trips(client):
 def test_robot_constraints(client):
     with SessionLocal() as db:
         robot = SimulatedSidewalkRobotProvider(db)
-        near = robot.quote((25.7630, -80.3690), (25.7545, -80.3790), Cargo(12, "shelf_stable"), clock.now())
+        near = robot.quote((25.7630, -80.3690), (25.7545, -80.3790), Cargo(12), clock.now())
         assert near.feasible and near.simulated
-        far = robot.quote((25.7630, -80.3690), (25.7400, -80.3350), Cargo(12, "shelf_stable"), clock.now())
+        far = robot.quote((25.7630, -80.3690), (25.7400, -80.3350), Cargo(12), clock.now())
         assert not far.feasible and "range" in far.reason
-        big = robot.quote((25.7630, -80.3690), (25.7545, -80.3790), Cargo(30, "shelf_stable"), clock.now())
+        big = robot.quote((25.7630, -80.3690), (25.7545, -80.3790), Cargo(30), clock.now())
         assert not big.feasible and "capacity" in big.reason
-        cold = robot.quote((25.7630, -80.3690), (25.7545, -80.3790), Cargo(12, "cold", totes_available=0), clock.now())
-        assert not cold.feasible and "totes" in cold.reason
-        av = SimulatedWaymoProvider(db).quote((25.7630, -80.3690), (25.7784, -80.1409), Cargo(12, "shelf_stable"), clock.now())
+        av = SimulatedWaymoProvider(db).quote((25.7630, -80.3690), (25.7784, -80.1409), Cargo(12), clock.now())
         assert not av.feasible and "outside the illustrative service zone" in av.reason
 
 

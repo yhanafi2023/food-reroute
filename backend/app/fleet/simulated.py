@@ -2,13 +2,12 @@
 
 No Waymo API or robot API is used. These providers model the constraints a real
 curbside fleet would have (service area, curbside handoff, point-to-point trips,
-cargo limits, insulated totes, load windows) using configurable assumptions from
+cargo limits, load windows) using configurable assumptions from
 app/assumptions.py and travel times from the routing client (the ETA model trained
 on open OSRM / OpenStreetMap data). Every quote and event is marked simulated=True.
 """
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, Tuple
 
@@ -16,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app import clients
 from app.assumptions import (
-    AV_CAPACITY_MEALS, AV_DISPATCH_DELAY_MIN, AV_SIM_FLEET_SIZE, MEALS_PER_TOTE, ROBOT_CAPACITY_MEALS, ROBOT_MAX_MI,
+    AV_CAPACITY_MEALS, AV_DISPATCH_DELAY_MIN, AV_SIM_FLEET_SIZE, ROBOT_CAPACITY_MEALS, ROBOT_MAX_MI,
     ROBOT_SIM_FLEET_SIZE, ROBOT_SPEED_MPH,
 )
 from app.fleet import geofence
@@ -29,7 +28,7 @@ ROBOT_HUBS = [(25.7575, -80.3745)]         # illustrative robot hub on FIU's cam
 
 
 def totes_needed(cargo: Cargo) -> int:
-    return math.ceil(cargo.meals / MEALS_PER_TOTE) if cargo.category in ("hot", "cold", "frozen") else 0
+    return 0  # no hot/cold/frozen distinction any more, so no insulated totes to count
 
 
 class SimulatedWaymoProvider:
@@ -57,8 +56,6 @@ class SimulatedWaymoProvider:
             q.reason = "drop off is outside the illustrative service zone"
         elif cargo.meals > AV_CAPACITY_MEALS:
             q.reason = f"{cargo.meals} meals is over the simulated vehicle capacity ({AV_CAPACITY_MEALS:g})"
-        elif totes_needed(cargo) > cargo.totes_available:
-            q.reason = f"needs {totes_needed(cargo)} insulated totes; restaurant has {cargo.totes_available}"
         elif self.availability()["vehicles_free"] <= 0:
             q.reason = "no simulated vehicle free"
         if q.reason:
@@ -103,8 +100,6 @@ class SimulatedSidewalkRobotProvider(SimulatedWaymoProvider):
             q.reason = "no simulated robot hub within range of the restaurant"
         elif cargo.meals > ROBOT_CAPACITY_MEALS:
             q.reason = f"{cargo.meals} meals is over the simulated robot capacity ({ROBOT_CAPACITY_MEALS:g})"
-        elif totes_needed(cargo) > cargo.totes_available:
-            q.reason = f"needs {totes_needed(cargo)} insulated totes; restaurant has {cargo.totes_available}"
         elif self.availability()["vehicles_free"] <= 0:
             q.reason = "no simulated robot free"
         if q.reason:

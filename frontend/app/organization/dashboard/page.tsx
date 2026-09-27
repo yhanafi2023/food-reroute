@@ -10,25 +10,27 @@ import { clock, currentTrip, number } from "@/lib/format";
 import type { OrgDeliveries, OrgDeliveryItem } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
-function ReceiptForm({ item, busy, onSubmit }: {
-  item: OrgDeliveryItem; busy: boolean;
-  onSubmit: (condition: "accepted" | "partially_accepted" | "rejected", receivedMeals: number, note: string) => void;
+function ReceiptForm({ item, busy, receiver, onSubmit }: {
+  item: OrgDeliveryItem; busy: boolean; receiver: string;
+  onSubmit: (condition: "accepted" | "partially_accepted" | "rejected", receivedMeals: number, note: string, receivedBy: string) => void;
 }) {
   const [receivedMeals, setReceivedMeals] = useState(String(item.stop.allocated_meals));
   const [note, setNote] = useState("");
+  const [receivedBy, setReceivedBy] = useState(receiver);
   const full = Number(receivedMeals) >= item.stop.allocated_meals;
   return (
     <div className="flex flex-col gap-3">
       <label className="field"><span>Meals actually received</span>
         <input className="input num" type="number" min={0} max={item.stop.allocated_meals} value={receivedMeals} onChange={(e) => setReceivedMeals(e.target.value)} />
       </label>
+      <label className="field"><span>Received by</span><input className="input" required value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} /></label>
       <label className="field"><span>Notes (only needed if rejecting or short)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></label>
       <div className="grid grid-cols-2 gap-3">
         <button className="btn btn-good btn-lg" disabled={busy}
-          onClick={() => onSubmit(full ? "accepted" : "partially_accepted", Number(receivedMeals), note)}>
+          onClick={() => onSubmit(full ? "accepted" : "partially_accepted", Number(receivedMeals), note, receivedBy)}>
           Confirm receipt
         </button>
-        <button className="btn btn-danger btn-lg" disabled={busy} onClick={() => onSubmit("rejected", 0, note)}>Reject</button>
+        <button className="btn btn-danger btn-lg" disabled={busy} onClick={() => onSubmit("rejected", 0, note, receivedBy)}>Reject</button>
       </div>
     </div>
   );
@@ -81,15 +83,16 @@ export default function OrganizationDashboardPage() {
                     <span className="text-ink-2">
                       {trip?.carrier.type === "volunteer" ? trip.carrier.first_name : trip?.carrier.label} · from {item.rescue.restaurant.name}
                     </span>
-                    <span className="text-sm text-ink-3">{item.rescue.category.replace("_", "-")} food · pickup by {clock(item.rescue.pickup_deadline)}</span>
+                    <span className="text-sm text-ink-3">{item.rescue.description ? `${item.rescue.description} · ` : ""}pickup by {clock(item.rescue.pickup_deadline)}</span>
                   </div>
                   <span className={`chip ${item.stop.status === "delivered" ? "chip-good" : ""}`}>{item.stop.status === "delivered" ? "Delivered, please confirm" : "on the way"}</span>
                 </div>
                 {trip && <DeliveryMap rescue={item.rescue} trip={trip} height={280} />}
                 {item.stop.status === "delivered" ? (
-                  <ReceiptForm item={item} busy={busy}
-                    onSubmit={(condition, receivedMeals, noteText) => act(() => api(`/stops/${item.stop.id}/receipt`, {
-                      method: "POST", body: { condition, received_meals: receivedMeals, reject_note: noteText, reject_reason: condition === "rejected" ? "other" : undefined },
+                  <ReceiptForm item={item} busy={busy} receiver={user.name}
+                    onSubmit={(condition, receivedMeals, noteText, receivedBy) => act(() => api(`/stops/${item.stop.id}/receipt`, {
+                      method: "POST", body: { condition, received_meals: receivedMeals, reject_note: noteText, received_by_name: receivedBy,
+                        reject_reason: condition === "accepted" ? undefined : condition === "partially_accepted" ? "quantity" : "other" },
                     }), condition === "rejected" ? "Marked as rejected." : `Confirmed ${receivedMeals} meals. Thank you!`)}
                   />
                 ) : (

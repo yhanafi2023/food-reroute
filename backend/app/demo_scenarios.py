@@ -49,7 +49,7 @@ def _receive(db: Session, fc, trip: Trip, s, receipts) -> None:
     fc.advance(minutes=2)
     staff = db.query(User).filter_by(organization_id=s.organization_id).order_by(User.id).first()
     cond, meals, reason, note = receipts.get(s.organization.name, ("accepted", None, None, ""))
-    lifecycle.receive_stop(db, s, staff, cond, meals, reason, note, 145.0 if trip.rescue.category == "hot" else 38.0,
+    lifecycle.receive_stop(db, s, staff, cond, meals, reason, note, None,
                            staff.first_name, "", s.organization.receiver_profile.required_fields or [])
     if trip.mode != "volunteer" and s.status in ("received", "rejected"):
         handoff._set(db, trip, "received", staff)
@@ -95,14 +95,14 @@ def run_all(db: Session, ids: Dict[str, int]) -> None:
     fc = clock.FakeClock(clock.local_to_utc(midnight + timedelta(hours=18)))
     with clock.use(fc):
         # 1. completed rescue, full audit trail (24 meals to the shelter)
-        r1 = _post(db, "Casa Demo Cocina", quantity=2, unit="tray", category="hot",
+        r1 = _post(db, "Casa Demo Cocina", quantity=2, unit="tray",
                    description="Rice, black beans, roast chicken", allergens=[])
         for t in _trips(db, r1, "matched"):
             complete(db, fc, t)
 
         # 2. the first volunteer never arrives; after the grace period the rescue re-queues
         fc.advance(minutes=20)
-        r2 = _post(db, "Demo Pizza Sur", quantity=2, unit="box", category="shelf_stable",
+        r2 = _post(db, "Demo Pizza Sur", quantity=2, unit="box",
                    description="Boxed garlic knots", allergens=["gluten", "dairy"])
         first = _trips(db, r2, "matched")[0]
         fc.current = first.eta_pickup_at
@@ -112,20 +112,20 @@ def run_all(db: Session, ids: Dict[str, int]) -> None:
 
         # 3. partial acceptance at the shelter
         fc.advance(minutes=15)
-        r3 = _post(db, "Demo Buffet Oeste", quantity=2, unit="half_pan", category="hot", description="Buffet trays",
+        r3 = _post(db, "Demo Buffet Oeste", quantity=2, unit="half_pan", description="Buffet trays",
                    allergens=["shellfish"])
         for t in _trips(db, r3, "matched"):
             complete(db, fc, t, {"Demo Night Shelter": ("partially_accepted", 12, "packaging", "two pans arrived uncovered")})
 
-        # 4. late-night simulated AV delivery (11:40 PM, cold food to the 24/7 fridge)
+        # 4. late-night simulated AV delivery (11:40 PM, to the 24/7 fridge)
         fc.current = clock.local_to_utc(midnight + timedelta(hours=23, minutes=40))
-        r4 = _post(db, "Demo Grill Norte", quantity=3, unit="bag", category="cold", description="Salads and wraps", allergens=[])
+        r4 = _post(db, "Demo Grill Norte", quantity=3, unit="bag", description="Salads and wraps", allergens=[])
         for t in _trips(db, r4, "matched") + _trips(db, r4, "en_route_pickup"):
             complete(db, fc, t)
 
         # 5. the simulated AV's load window is missed; a volunteer who just came online takes over
         fc.advance(minutes=10)
-        r5 = _post(db, "Demo Grill Norte", quantity=2, unit="bag", category="cold", description="Sandwich trays", allergens=[])
+        r5 = _post(db, "Demo Grill Norte", quantity=2, unit="bag", description="Sandwich trays", allergens=[])
         av5 = next(t for t in _trips(db, r5, "en_route_pickup") if t.mode == "waymo_sim")
         sam = db.query(User).filter_by(first_name="Sam", role="volunteer").one()
         vp = db.get(VolunteerProfile, sam.id)

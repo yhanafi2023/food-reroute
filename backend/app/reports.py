@@ -20,7 +20,7 @@ from app.models import Acknowledgment, OrgReport, ReceiverProfile, Trip, TripSto
 
 FIELD_LABELS = {
     "date_time": "Date/time received", "donor_name": "Donor", "donor_address": "Donor address",
-    "food_description": "Food description", "food_category": "Category", "quantity_meals": "Meals",
+    "food_description": "Food description", "quantity_meals": "Meals",
     "weight_lbs": "Weight (lbs, est. 1.2 lbs/meal)", "temperature_at_receipt": "Temp at receipt (F)",
     "condition": "Condition", "received_by_name": "Received by", "allergen_info": "Allergens",
     "donor_acknowledgment": "Donor acknowledgment",
@@ -33,8 +33,7 @@ def _value(stop: TripStop, field: str, ack: Optional[Acknowledgment]) -> Any:
         "date_time": clock.to_local(stop.received_at).strftime("%Y-%m-%d %H:%M") if stop.received_at else None,
         "donor_name": r.restaurant.name,
         "donor_address": r.restaurant.address or None,
-        "food_description": r.description or f"{r.quantity:g} {r.unit.replace('_', ' ')} ({r.category.replace('_', '-')})",
-        "food_category": r.category,
+        "food_description": r.description or f"{r.quantity:g} {r.unit.replace('_', ' ')}",
         "quantity_meals": stop.received_meals,
         "weight_lbs": round(stop.received_meals * LBS_PER_MEAL, 1) if stop.received_meals is not None else None,
         "temperature_at_receipt": stop.temperature_f,
@@ -42,7 +41,7 @@ def _value(stop: TripStop, field: str, ack: Optional[Acknowledgment]) -> Any:
         "received_by_name": stop.received_by_name or None,
         "allergen_info": (", ".join(r.allergens) or "none declared") if r.allergens_declared else None,
         "donor_acknowledgment": (f"{ack.status}" + (f" by {ack.signer_name}" if ack and ack.signer_name else "")) if ack else None,
-    }[field]
+    }.get(field)  # a field no longer offered (e.g. the old food category) reads as blank
 
 
 def delivery_rows(db: Session, org_id: int, start: date, end: date, fields: List[str]) -> List[Dict[str, Any]]:

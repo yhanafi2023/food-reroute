@@ -1,5 +1,6 @@
-"""VolunteerProvider (section 6a): the human flow. Only volunteers whose availability,
-distance, capacity and equipment fit the food are offered a trip."""
+"""VolunteerProvider (section 6a): the human flow, shown to people as "drivers". Any driver
+who is on the job (weekly schedule or "I'm free now") and within their distance can take a
+trip; the kind of food and the driver's equipment or vehicle size play no part."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -12,13 +13,11 @@ from app.fleet.base import Cargo, Point, Quote
 from app.intelligence.eta.features import haversine_miles
 from app.models import Trip, User, VolunteerProfile
 
-EQUIPMENT = {"hot": ("has_insulated_bags", "insulated bags"), "cold": ("has_cooler", "a cooler"),
-             "frozen": ("has_cooler", "a cooler")}
 LIVE_LOCATION_MIN = 30  # a shared GPS fix newer than this replaces the home location for distance and ETA
 
 
 def origin(v: VolunteerProfile, now: datetime) -> Point:
-    """Where the volunteer starts from: their live location when recent, else home."""
+    """Where the driver starts from: their live location when recent, else home."""
     if v.last_lat is not None and v.last_location_at and now - v.last_location_at <= timedelta(minutes=LIVE_LOCATION_MIN):
         return (v.last_lat, v.last_lng)
     return (v.home_lat, v.home_lng)
@@ -37,7 +36,7 @@ class VolunteerProvider:
 
     def __init__(self, db: Session, only_user_id: int | None = None):
         self.db = db
-        self.only_user_id = only_user_id  # a volunteer claiming one rescue: nobody else is considered
+        self.only_user_id = only_user_id  # a driver claiming one rescue: nobody else is considered
 
     def _busy_ids(self) -> set:
         rows = self.db.query(Trip.volunteer_user_id).filter(
@@ -46,9 +45,9 @@ class VolunteerProvider:
 
     def candidates(self, pickup: Point, cargo: Cargo, start_at: datetime, trip_minutes: float,
                    exclude: Iterable[int] = ()) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-        """Feasible volunteers sorted by pickup ETA, plus counts of why others were not."""
+        """Drivers who can take it, sorted by pickup ETA, plus counts of why others cannot."""
         busy, excluded = self._busy_ids(), set(exclude)
-        why = {"unavailable_now": 0, "too_far": 0, "no_equipment": 0, "too_small": 0, "busy": 0, "declined_or_no_show": 0}
+        why = {"unavailable_now": 0, "too_far": 0, "busy": 0, "declined_or_no_show": 0}
         rows = (self.db.query(VolunteerProfile, User).join(User, User.id == VolunteerProfile.user_id)
                 .filter(User.active.is_(True)).all())
         near = []
@@ -65,13 +64,6 @@ class VolunteerProvider:
             dist = haversine_miles(start[0], start[1], pickup[0], pickup[1])
             if dist > v.max_distance_mi:
                 why["too_far"] += 1
-                continue
-            need = EQUIPMENT.get(cargo.category)
-            if need and not getattr(v, need[0]):
-                why["no_equipment"] += 1
-                continue
-            if v.capacity_meals < cargo.meals:
-                why["too_small"] += 1
                 continue
             near.append((v, u, dist))
         if not near:
@@ -112,7 +104,7 @@ class VolunteerProvider:
 
 
 def describe_unavailable(why: Dict[str, int]) -> str:
-    parts = {"unavailable_now": "not available at this hour", "too_far": "too far away", "no_equipment": "without the right cooler or bags",
-             "too_small": "without enough room", "busy": "on another trip", "declined_or_no_show": "declined or missed this rescue"}
+    parts = {"unavailable_now": "not on the job right now", "too_far": "too far away", "busy": "on another trip",
+             "declined_or_no_show": "declined or missed this rescue"}
     bits = [f"{n} {parts[k]}" for k, n in why.items() if n]
-    return "no volunteer can take it (" + ", ".join(bits) + ")" if bits else "no volunteers registered nearby"
+    return "no driver can take it (" + ", ".join(bits) + ")" if bits else "no drivers registered nearby"

@@ -11,7 +11,6 @@ export type RescueStatus =
 export type TripStatus = RescueStatus;
 export type TripMode = "volunteer" | "waymo_sim" | "robot_sim";
 export type StopStatus = "pending" | "delivered" | "received" | "rejected" | "rerouted" | "cancelled";
-export type FoodCategory = "hot" | "cold" | "frozen" | "shelf_stable";
 export type FoodUnit = "individual_meal" | "bag" | "box" | "tray" | "half_pan" | "full_pan";
 
 export interface User { id: number; email: string; name: string; first_name: string; role: Role; organization_id: number | null }
@@ -88,7 +87,7 @@ export interface Trip {
 
 export interface Rescue {
   id: number; status: RescueStatus; is_draft: boolean; is_fictional: boolean; restaurant: RestaurantRef;
-  quantity: number; unit: FoodUnit; est_meals: number; meals_per_unit_assumption: number; category: FoodCategory;
+  quantity: number; unit: FoodUnit; est_meals: number; meals_per_unit_assumption: number;
   description: string; prepared_at: string | null; allergens: string[] | null; allergens_declared: boolean;
   dietary_tags: string[]; safe_until: string; pickup_deadline: string; pickup_instructions: string;
   attested_by: number | null; attested_at: string | null; duplicate_of: number | null; created_at: string;
@@ -98,7 +97,7 @@ export interface Rescue {
 }
 
 export interface QuickPostBody {
-  quantity: number; unit: FoodUnit; category: FoodCategory; pickup_deadline: string; attested: boolean;
+  quantity: number; unit: FoodUnit; pickup_deadline: string; attested: boolean;
   description?: string; prepared_at?: string; allergens?: string[]; dietary_tags?: string[];
   pickup_instructions?: string; safe_until?: string; fmv_per_meal?: number; cost_basis_per_meal?: number;
 }

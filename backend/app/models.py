@@ -22,7 +22,7 @@ RESTAURANT_ROLES = ("restaurant_staff", "restaurant_manager")
 ORG_ROLES = ("org_staff", "org_manager")
 ORG_KINDS = ("restaurant", "receiver")
 UNITS = ("individual_meal", "bag", "box", "tray", "half_pan", "full_pan")
-CATEGORIES = ("hot", "cold", "frozen", "shelf_stable")
+CATEGORIES = ("general", "hot", "cold", "frozen", "shelf_stable")  # only "general" is written now; the rest are legacy rows
 RESCUE_STATUSES = ("posted", "matched", "en_route_pickup", "picked_up", "en_route_dropoff", "delivered", "received",
                    "cancelled", "expired", "rejected", "reassigned")
 TRIP_STATUSES = ("matched", "en_route_pickup", "picked_up", "en_route_dropoff", "delivered", "received",
@@ -285,7 +285,7 @@ class Rescue(Base):
     unit: Mapped[str] = mapped_column(String(20))
     meals_per_unit: Mapped[float] = mapped_column(Float)       # snapshot of the assumption used
     est_meals: Mapped[int] = mapped_column(Integer)
-    category: Mapped[str] = mapped_column(String(14))
+    category: Mapped[str] = mapped_column(String(14), default="general")
     description: Mapped[str] = mapped_column(Text, default="")
     prepared_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     allergens: Mapped[list] = mapped_column(JSON, default=list)

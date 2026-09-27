@@ -32,7 +32,7 @@ export default function AdminDashboardPage() {
     <AppShell
       icon="stats"
       title="Network"
-      subtitle="Every restaurant, volunteer and organization, live."
+      subtitle="Every restaurant, driver and organization, live."
       actions={
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-ghost" disabled={busy}
@@ -52,7 +52,7 @@ export default function AdminDashboardPage() {
     >
       <div className="flex flex-wrap items-center gap-2">
         <LiveStatus updatedAt={updatedAt} error={error} />
-        <span className="text-sm text-ink-3">Restaurants, volunteers and organizations here are fictional demo accounts.</span>
+        <span className="text-sm text-ink-3">Restaurants, drivers and organizations here are fictional demo accounts.</span>
       </div>
       <ErrorNote message={error} onRetry={refresh} stale={!!data} />
       {note && <div className="alert alert-info" role="status">{note}</div>}
@@ -61,7 +61,7 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Stat label="Open rescues" icon="food-box" value={data.stats.open_rescues} />
             <Stat label="Active trips" icon="route" value={data.stats.active_trips} />
-            <Stat label="Volunteers available" icon="driver" value={`${data.stats.available_volunteers} / ${data.stats.total_volunteers}`} />
+            <Stat label="Drivers available" icon="driver" value={`${data.stats.available_volunteers} / ${data.stats.total_volunteers}`} />
             <Stat label="Meals rescued" icon="hot-meal" value={number(data.impact.meals_rescued)} note={data.impact.includes_demo_data ? "Includes demo data" : undefined} />
           </div>
 

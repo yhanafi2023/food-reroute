@@ -1,4 +1,4 @@
-"""Onboarding intake (section 2): receiving orgs' three questions, restaurant and volunteer profiles."""
+"""Onboarding intake (section 2): receiving orgs' three questions, restaurant and driver profiles."""
 from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -31,10 +31,8 @@ def profile_json(db: Session, org: Organization, viewer: User) -> Dict:
                "receiving_contact_phone": p.receiving_contact_phone if own else mask_phone(p.receiving_contact_phone),
                "receiving_instructions": p.receiving_instructions, "curbside_ok": p.curbside_ok,
                "curb_location": p.curb_location},
-        "q2": {k: getattr(p, k) for k in ("accepts_hot", "hot_max_minutes", "can_hold_hot", "serves_immediately",
-                                           "accepts_cold", "fridge_capacity_meals", "accepts_frozen", "freezer_capacity_meals",
-                                           "accepts_shelf_stable", "dietary_rules", "refused_allergens",
-                                           "max_meals_per_delivery", "typical_nightly_need", "current_need")},
+        "q2": {k: getattr(p, k) for k in ("dietary_rules", "refused_allergens", "max_meals_per_delivery",
+                                           "typical_nightly_need", "current_need")},
         "q3": {"required_fields": p.required_fields, "report_frequency": p.report_frequency,
                "report_format": p.report_format, "reports_to": p.reports_to, "is_501c3": p.is_501c3,
                "ein": p.ein if own else None, "ein_verified": p.ein_verified},
@@ -166,9 +164,6 @@ def put_restaurant_profile(body: RestaurantProfileIn, user: User = Depends(RESTA
 class VolunteerProfileIn(BaseModel):
     availability: Dict[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"], List[List[str]]]
     max_distance_mi: float = Field(gt=0, le=50)
-    capacity_meals: int = Field(gt=0, le=500)
-    has_cooler: bool
-    has_insulated_bags: bool
     preferred_areas: str = Field(default="", max_length=200)
     vehicle_description: str = Field(min_length=1, max_length=120)
 
@@ -181,8 +176,7 @@ class VolunteerProfileIn(BaseModel):
 
 
 def volunteer_profile_json(v: VolunteerProfile) -> Dict:
-    return {k: getattr(v, k) for k in ("availability", "max_distance_mi", "capacity_meals", "has_cooler",
-                                        "has_insulated_bags", "preferred_areas", "vehicle_description")}
+    return {k: getattr(v, k) for k in ("availability", "max_distance_mi", "preferred_areas", "vehicle_description")}
 
 
 @router.get("/volunteers/me/profile")

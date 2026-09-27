@@ -19,8 +19,6 @@ Reason = Dict[str, str]
 REASON_GROUP = {
     "onboarding_incomplete": "onboarding",
     "closed": "closed", "closed_exception": "closed", "past_cutoff": "closed",
-    "category_hot": "no_hot_food", "hot_too_slow": "hot_too_slow",
-    "category_cold": "category", "category_frozen": "category", "category_shelf_stable": "category",
     "past_safe_until": "food_safety",
     "dietary": "dietary", "allergen": "dietary", "allergens_undeclared": "dietary",
     "capacity": "capacity", "need_met": "capacity",
@@ -53,18 +51,14 @@ def meals_committed_today(db: Session, org_id: int) -> int:
     return int(pending or 0) + int(received or 0)
 
 
-def capacity_for(db: Session, p: ReceiverProfile, category: str) -> Tuple[int, Optional[Reason]]:
-    """How many meals of this category the org can take on this delivery right now."""
+def capacity_for(db: Session, p: ReceiverProfile) -> Tuple[int, Optional[Reason]]:
+    """How many meals the org can take on this delivery right now (any kind of food)."""
     cap = p.max_meals_per_delivery or 0
-    if category == "cold" and p.fridge_capacity_meals is not None:
-        cap = min(cap, p.fridge_capacity_meals)
-    if category == "frozen" and p.freezer_capacity_meals is not None:
-        cap = min(cap, p.freezer_capacity_meals)
     fresh_need = p.current_need is not None and p.current_need_at and clock.now() - p.current_need_at < timedelta(hours=24)
     need = p.current_need if fresh_need else (p.typical_nightly_need or 0)
     remaining_need = need - meals_committed_today(db, p.organization_id)
     if cap <= 0:
-        return 0, _r("capacity", f"no {category.replace('_', '-')} storage space")
+        return 0, _r("capacity", "no room for more food right now")
     if remaining_need <= 0:
         return 0, _r("need_met", f"tonight's need ({need} meals) is already covered")
     return min(cap, remaining_need), None
@@ -79,14 +73,6 @@ def check(db: Session, p: ReceiverProfile, rescue: Rescue, pickup_at: datetime, 
     ok, why = intake.receiving_check(db, p, arrival_at)
     if not ok:
         reasons.append(why)
-    accepted = {"hot": p.accepts_hot, "cold": p.accepts_cold, "frozen": p.accepts_frozen,
-                "shelf_stable": p.accepts_shelf_stable}[rescue.category]
-    if not accepted:
-        reasons.append(_r(f"category_{rescue.category}", f"does not accept {rescue.category.replace('_', '-')} food"))
-    elif rescue.category == "hot":
-        minutes = (arrival_at - pickup_at).total_seconds() / 60
-        if p.hot_max_minutes is not None and minutes > p.hot_max_minutes:
-            reasons.append(_r("hot_too_slow", f"hot food would take {minutes:.0f} min from pickup; they accept at most {p.hot_max_minutes}"))
     if arrival_at > rescue.safe_until:
         reasons.append(_r("past_safe_until", f"would arrive after the food's safe-until time ({clock.fmt_local(rescue.safe_until)})"))
     tags = set(rescue.dietary_tags or [])
@@ -102,7 +88,7 @@ def check(db: Session, p: ReceiverProfile, rescue: Rescue, pickup_at: datetime, 
             reasons.append(_r("allergen", f"does not accept {', '.join(sorted(refused & set(rescue.allergens)))}"))
     if mode in ("waymo_sim", "robot_sim") and not p.curbside_ok:
         reasons.append(_r("curbside", "cannot meet a vehicle at the curb"))
-    cap, cap_reason = capacity_for(db, p, rescue.category)
+    cap, cap_reason = capacity_for(db, p)
     if cap_reason:
         reasons.append(cap_reason)
     return reasons, cap

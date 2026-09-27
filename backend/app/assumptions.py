@@ -25,7 +25,7 @@ UNIT_TO_MEALS: Dict[str, float] = {
 }
 
 # Hours after preparation that food is treated as safe to deliver (safe_until default).
-SAFE_UNTIL_HOURS: Dict[str, float] = {"hot": 2, "cold": 4, "frozen": 4, "shelf_stable": 48}
+SAFE_UNTIL_HOURS: float = _f("SAFE_UNTIL_HOURS", 4)  # one window for every donation: no hot/cold/frozen split
 
 LBS_PER_MEAL = 1.2  # cited: Feeding America
 LOAD_WINDOW_MIN = _f("LOAD_WINDOW_MIN", 5)
@@ -95,8 +95,9 @@ ASSUMPTIONS: Dict[str, Dict[str, Any]] = {
     "unit_to_meals": {"value": UNIT_TO_MEALS, "kind": "assumption",
                       "note": "Planning conversion from kitchen units to meals. Replace with the restaurant's own counts."},
     "safe_until_hours": {"value": SAFE_UNTIL_HOURS, "kind": "assumption",
-                         "note": "Hot 2 h follows USDA FSIS guidance to not leave perishable food out more than 2 hours "
-                                 "(1 hour above 90 F); cold/frozen 4 h and shelf-stable 48 h are FoodFlow planning values.",
+                         "note": "How long a donation stays safe to deliver after it is prepared, unless the restaurant "
+                                 "gives its own safe-until time. A FoodFlow planning value; USDA FSIS danger-zone guidance "
+                                 "is the reference for perishable food.",
                          "source": "https://www.fsis.usda.gov/food-safety/safe-food-handling-and-preparation/food-safety-basics/danger-zone-40f-140f"},
     "lbs_per_meal": {"value": LBS_PER_MEAL, "kind": "cited", "note": "Feeding America: 'Each meal is roughly 1.2 pounds'.",
                      "source": "https://www.feedingamerica.org/ways-to-give/faq/about-our-claims"},

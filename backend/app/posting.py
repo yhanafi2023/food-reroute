@@ -1,9 +1,9 @@
 """Posting that fits a real kitchen (section 3).
 
-A quick post needs only quantity, unit, category, pickup deadline and the staff
-food-safety attestation. Units convert to estimated meals with UNIT_TO_MEALS
-(an assumption); both the original unit and the estimate are stored.
-safe_until defaults from SAFE_UNTIL_HOURS by category.
+A quick post needs only quantity, unit, pickup deadline and the staff food-safety
+attestation. Units convert to estimated meals with UNIT_TO_MEALS (an assumption); both
+the original unit and the estimate are stored. There is no food category: every donation
+is "general", and safe_until defaults to SAFE_UNTIL_HOURS after it was prepared.
 """
 from __future__ import annotations
 
@@ -21,13 +21,12 @@ from app.models import Rescue, RescueTemplate, User
 from app.schemas_common import to_naive_utc
 
 Unit = Literal["individual_meal", "bag", "box", "tray", "half_pan", "full_pan"]
-Category = Literal["hot", "cold", "frozen", "shelf_stable"]
+CATEGORY = "general"  # stored on every rescue; food type plays no part in matching
 
 
 class QuickPost(BaseModel):
     quantity: float = Field(gt=0, le=1000)
     unit: Unit
-    category: Category
     pickup_deadline: datetime
     attested: bool = Field(description="Staff confirm the food was held at a safe temperature")
     description: str = Field(default="", max_length=1000)
@@ -69,7 +68,7 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
     if not draft and not body.attested:
         raise HTTPException(422, "Confirm the food was held at a safe temperature before posting")
     prepared = body.prepared_at or now
-    safe_until = body.safe_until or prepared + timedelta(hours=SAFE_UNTIL_HOURS[body.category])
+    safe_until = body.safe_until or prepared + timedelta(hours=SAFE_UNTIL_HOURS)
     if safe_until <= now:
         raise HTTPException(422, "This food is already past its safe-until time and cannot be donated")
     if not draft and body.pickup_deadline <= now:
@@ -78,7 +77,7 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
     d = _defaults(user)
     rescue = Rescue(
         restaurant_org_id=user.organization_id, posted_by=user.id, status="posted", quantity=body.quantity, unit=body.unit,
-        meals_per_unit=UNIT_TO_MEALS[body.unit], est_meals=est_meals(body.quantity, body.unit), category=body.category,
+        meals_per_unit=UNIT_TO_MEALS[body.unit], est_meals=est_meals(body.quantity, body.unit), category=CATEGORY,
         description=body.description, prepared_at=body.prepared_at, allergens=body.allergens or [],
         allergens_declared=body.allergens is not None, dietary_tags=body.dietary_tags,
         attested_by=None if draft else user.id, attested_at=None if draft else now, safe_until=safe_until,
@@ -93,14 +92,14 @@ def create_post(db: Session, user: User, body: QuickPost, draft: bool = False, s
     if dup is not None:
         rescue.duplicate_of = dup.id
         warnings.append(f"This looks like rescue #{dup.id} posted {int((now - dup.created_at).total_seconds() // 60)} min ago "
-                        f"({dup.quantity:g} {dup.unit.replace('_', ' ')}, {dup.category}). Cancel one if it is a double post.")
+                        f"({dup.quantity:g} {dup.unit.replace('_', ' ')}). Cancel one if it is a double post.")
     if deadline < body.pickup_deadline:
         warnings.append(f"Pickup deadline moved to the food's safe-until time, {clock.fmt_local(deadline)}")
     db.add(rescue)
     db.flush()
     audit.log(db, "rescue_drafted" if draft else "rescue_posted", entity="rescue", actor=user, rescue_id=rescue.id,
               to_state="posted", details={"quantity": body.quantity, "unit": body.unit, "est_meals": rescue.est_meals,
-                                          "meals_per_unit_assumption": rescue.meals_per_unit, "category": body.category,
+                                          "meals_per_unit_assumption": rescue.meals_per_unit,
                                           "attested_by": rescue.attested_by, "duplicate_of": rescue.duplicate_of})
     if dup is not None:
         notify.send(db, [user], "duplicate_warning", "Possible double post", warnings[0], dedupe=f"dup:{rescue.id}")
@@ -113,13 +112,13 @@ def find_duplicate(db: Session, org_id: int, body: QuickPost) -> Optional[Rescue
                                       Rescue.status.notin_(("cancelled", "expired")), Rescue.is_draft.is_(False))
               .order_by(Rescue.id.desc()).all())
     for r in recent:
-        if r.category == body.category and r.unit == body.unit and abs(r.quantity - body.quantity) <= max(0.1 * r.quantity, 0.5):
+        if r.unit == body.unit and abs(r.quantity - body.quantity) <= max(0.1 * r.quantity, 0.5):
             return r
     return None
 
 
 def body_from_rescue(r: Rescue, deadline: datetime, attested: bool) -> QuickPost:
-    return QuickPost(quantity=r.quantity, unit=r.unit, category=r.category, pickup_deadline=deadline, attested=attested,
+    return QuickPost(quantity=r.quantity, unit=r.unit, pickup_deadline=deadline, attested=attested,
                      description=r.description, allergens=r.allergens if r.allergens_declared else None,
                      dietary_tags=r.dietary_tags, pickup_instructions=r.pickup_instructions)
 

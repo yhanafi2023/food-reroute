@@ -13,7 +13,7 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const HOME_FOR_ROLE: Record<Role, string> = {
   restaurant_staff: "/restaurant/dashboard",
   restaurant_manager: "/restaurant/dashboard",
-  volunteer: "/volunteer/dashboard",
+  volunteer: "/driver/dashboard",
   org_staff: "/organization/dashboard",
   org_manager: "/organization/dashboard",
   admin: "/admin/dashboard",

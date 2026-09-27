@@ -11,7 +11,6 @@ Point = Tuple[float, float]
 @dataclass
 class Cargo:
     meals: int
-    category: str
     totes_available: int = 0
 
 

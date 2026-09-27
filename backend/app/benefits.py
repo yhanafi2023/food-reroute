@@ -106,7 +106,7 @@ def create_acknowledgment(db: Session, stop: TripStop) -> Acknowledgment:
         "review_note": ACK_REVIEW_NOTE,
         "donor": {"name": r.restaurant.legal_name or r.restaurant.name, "address": r.restaurant.address},
         "date_received": clock.to_local(stop.received_at).date().isoformat() if stop.received_at else None,
-        "food_description": r.description or f"{r.quantity:g} {r.unit.replace('_', ' ')} of {r.category.replace('_', '-')} food",
+        "food_description": r.description or f"{r.quantity:g} {r.unit.replace('_', ' ')} of prepared food",
         "quantity_meals": stop.received_meals,
         "weight_lbs_estimated": round((stop.received_meals or 0) * LBS_PER_MEAL, 1),
         "donee": {"legal_name": org.legal_name or org.name, "ein": p.ein if p else None,
@@ -159,7 +159,7 @@ def sb1383_report(db: Session, restaurant_id: int, month: str) -> Dict[str, Any]
         org = s.organization
         e = per_org.setdefault(org.id, {"organization": org.name, "address": org.address, "food_types": set(),
                                         "pickups": set(), "meals": 0, "pounds_recovered": 0.0})
-        e["food_types"].add(s.trip.rescue.category.replace("_", "-"))
+        e["food_types"].add(s.trip.rescue.description or "prepared food")
         e["pickups"].add(s.trip_id)
         e["meals"] += s.received_meals or 0
         e["pounds_recovered"] += (s.received_meals or 0) * LBS_PER_MEAL

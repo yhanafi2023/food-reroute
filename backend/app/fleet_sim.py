@@ -44,7 +44,6 @@ def scenario(restaurants: List[str]) -> List[Dict[str, Any]]:
     for n, (lo, hi) in ((POSTS_EVENING, (0, 300)), (POSTS_LATE, (300, 480))):
         for _ in range(n):
             posts.append({"minute": rng.randint(lo, hi), "restaurant": rng.choice(restaurants),
-                          "category": rng.choice(["hot", "cold", "cold", "shelf_stable"]),
                           "unit": rng.choice(["bag", "box", "tray", "half_pan"]), "quantity": rng.randint(1, 4)})
     return sorted(posts, key=lambda p: p["minute"])
 
@@ -84,7 +83,7 @@ def run(mode: str) -> Dict[str, Any]:
 def _post(db: Session, p: Dict[str, Any], mode: str) -> None:
     org = db.query(Organization).filter_by(name=p["restaurant"]).one()
     user = db.query(User).filter_by(organization_id=org.id).first()
-    body = posting.QuickPost(quantity=p["quantity"], unit=p["unit"], category=p["category"], attested=True,
+    body = posting.QuickPost(quantity=p["quantity"], unit=p["unit"], attested=True,
                              allergens=[], pickup_deadline=clock.now() + timedelta(hours=2))
     rescue = posting.create_post(db, user, body)["rescue"]
     if mode == "volunteer_only":
@@ -136,7 +135,7 @@ def _act(db: Session, now: datetime, rng: random.Random, accepted_at, no_shows, 
             if s.status == "delivered" and now >= delivered_at.get(s.id, now) + timedelta(minutes=STAFF_ACTION_MIN):
                 staff = _staff(db, s.organization_id)
                 p = s.organization.receiver_profile
-                lifecycle.receive_stop(db, s, staff, "accepted", None, None, "", 140.0 if rescue.category == "hot" else 38.0,
+                lifecycle.receive_stop(db, s, staff, "accepted", None, None, "", None,
                                        "Simulated staff", "", p.required_fields or [])
                 if trip.mode != "volunteer" and s.status == "received":
                     handoff._set(db, trip, "received", staff)
@@ -183,7 +182,7 @@ def compare() -> Dict[str, Any]:
         "volunteer_only": a, "mixed_fleet": b,
         "difference": {"meals_delivered": b["meals_delivered"] - a["meals_delivered"],
                        "meals_expired": b["meals_expired"] - a["meals_expired"]},
-        "label": "SIMULATED: fictional restaurants, orgs and volunteers; simulated vehicles; seeded behavior. "
+        "label": "SIMULATED: fictional restaurants, orgs and drivers; simulated vehicles; seeded behavior. "
                  "Numbers come only from running this simulation.",
         "method": __doc__.strip(),
     }

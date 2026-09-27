@@ -21,7 +21,7 @@ def client(fake_clock):
 
 
 def post(client, h, **kw):
-    b = {"quantity": 2, "unit": "tray", "category": "hot", "attested": True,
+    b = {"quantity": 2, "unit": "tray", "attested": True,
          "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z", **kw}
     return client.post("/rescues", json=b, headers=h).json()["rescue"]
 
@@ -96,7 +96,7 @@ def test_a_failing_provider_never_breaks_the_request(client, monkeypatch):
 
     monkeypatch.setattr(notify.smtplib, "SMTP", boom)
     h = signin(client, EMAILS["restaurant_staff"])
-    r = client.post("/rescues", json={"quantity": 2, "unit": "tray", "category": "hot", "attested": True,
+    r = client.post("/rescues", json={"quantity": 2, "unit": "tray", "attested": True,
                                       "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z"}, headers=h)
     assert r.status_code == 200
     with SessionLocal() as db:

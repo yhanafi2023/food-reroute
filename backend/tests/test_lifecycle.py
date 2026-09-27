@@ -22,7 +22,7 @@ def client(fake_clock):
 
 
 def post(client, h, **kw):
-    body = {"quantity": 4, "unit": "tray", "category": "hot", "attested": True,
+    body = {"quantity": 4, "unit": "tray", "attested": True,
             "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z", **kw}
     r = client.post("/rescues", json=body, headers=h)
     assert r.status_code == 200, r.text
@@ -73,11 +73,10 @@ def run_full_flow(client, idem=False):
 def test_full_handoff_with_codes_quantities_receipt_and_audit(client):
     r, trip, stop, rest, vol, org = run_full_flow(client)
     form = client.get(f"/stops/{stop['id']}/receipt-form", headers=org).json()
-    assert "temperature_at_receipt" in form["required_fields"]
-    no_temp = client.post(f"/stops/{stop['id']}/receipt", json={"condition": "accepted", "received_by_name": "Tomas"}, headers=org)
-    assert no_temp.status_code == 422  # the shelter's Q3 answers require temperature at receipt
-    ok = client.post(f"/stops/{stop['id']}/receipt", json={"condition": "accepted", "temperature_f": 150,
-                                                          "received_by_name": "Tomas"}, headers=org)
+    assert "received_by_name" in form["required_fields"] and "temperature_at_receipt" not in form["required_fields"]
+    no_name = client.post(f"/stops/{stop['id']}/receipt", json={"condition": "accepted"}, headers=org)
+    assert no_name.status_code == 422  # the shelter's Q3 answers require who received it
+    ok = client.post(f"/stops/{stop['id']}/receipt", json={"condition": "accepted", "received_by_name": "Tomas"}, headers=org)
     assert ok.status_code == 200 and ok.json()["status"] == "received" and ok.json()["received_meals"] == 40
     final = client.get(f"/rescues/{r['id']}", headers=rest).json()
     assert final["status"] == "received"
@@ -144,7 +143,7 @@ def test_idempotent_retry_does_not_double_apply(client):
 def test_idempotency_key_reuse_for_another_request_is_rejected(client):
     rest = signin(client, EMAILS["restaurant_staff"])
     h = {**rest, "Idempotency-Key": "k1"}
-    body = {"quantity": 2, "unit": "bag", "category": "shelf_stable", "attested": True,
+    body = {"quantity": 2, "unit": "bag", "attested": True,
             "pickup_deadline": (clock.now() + timedelta(hours=3)).isoformat() + "Z"}
     first = client.post("/rescues", json=body, headers=h)
     again = client.post("/rescues", json=body, headers=h)

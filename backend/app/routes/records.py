@@ -225,8 +225,8 @@ def my_hours(format: Literal["json", "csv"] = "json", user: User = Depends(VOLUN
     rows = reports.volunteer_hours(db, user.id)
     total = round(sum(r["hours"] for r in rows), 2)
     if format == "json":
-        return {"volunteer": user.name, "trips": rows, "total_hours": total,
+        return {"driver": user.name, "trips": rows, "total_hours": total,
                 "method": "from accepting the trip to the last receipt confirmation"}
     cols = ["date", "started", "ended", "hours", "restaurant", "organizations", "meals", "trip_id"]
     return Response(_csv([[r[c] for c in cols] for r in rows] + [[], ["total_hours", total]], cols), media_type="text/csv",
-                    headers={"Content-Disposition": 'attachment; filename="volunteer-hours.csv"'})
+                    headers={"Content-Disposition": 'attachment; filename="driver-hours.csv"'})

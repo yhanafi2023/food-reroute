@@ -50,7 +50,7 @@ def _post_and_match(db: Session, user: User, body: posting.QuickPost):
 
 @router.post("/rescues")
 def quick_post(body: posting.QuickPost, user: User = Depends(RESTAURANT_ANY), db: Session = Depends(get_db)):
-    """Quick post: quantity + unit + category + pickup deadline + attestation. Everything else optional."""
+    """Quick post: quantity + unit + pickup deadline + attestation. Everything else optional."""
     return _post_and_match(db, user, body)
 
 
@@ -152,7 +152,7 @@ def list_rescues(status: Optional[str] = None, user: User = Depends(get_current_
     if user.role in ("restaurant_staff", "restaurant_manager"):
         q = q.filter_by(restaurant_org_id=user.organization_id)
     elif user.role != "admin":
-        raise HTTPException(403, "Restaurants see their own rescues; volunteers and organizations use their own lists")
+        raise HTTPException(403, "Restaurants see their own rescues; drivers and organizations use their own lists")
     if status:
         q = q.filter_by(status=status)
     return [rescue_json(r, user) for r in q.order_by(Rescue.id.desc()).limit(100)]

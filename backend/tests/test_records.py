@@ -96,7 +96,7 @@ def test_sb1383_totals(client, fake_clock):
     # the shelter's nightly need is 60, so the second delivery was capped at the 20 meals still needed
     assert received == 60
     assert row["organization"] == "Demo Night Shelter" and row["pickups_in_month"] == 2 and row["meals"] == received
-    assert row["pounds_recovered"] == round(received * 1.2, 1) and row["food_types"] == ["hot"]
+    assert row["pounds_recovered"] == round(received * 1.2, 1) and row["food_types"] and "hot" not in row["food_types"]
     assert row["written_agreements"][0]["signed_date"] == "2026-09-01"
     assert "local jurisdiction" in rep["note"] and rep["guidance"].startswith("https://calrecycle.ca.gov")
 
@@ -129,7 +129,7 @@ def test_org_report_has_exactly_the_q3_fields_and_flags_missing_ones(client):
     from app.reports import FIELD_LABELS
     expected = [FIELD_LABELS[f] for f in ORGS["Demo Night Shelter"]["q3"]["required_fields"]] + ["Incomplete fields"]
     assert rows[0] == expected and rep["fields"] == ORGS["Demo Night Shelter"]["q3"]["required_fields"]
-    assert rows[1][expected.index("Temp at receipt (F)")] == "150.0" and rows[1][-1] == ""
+    assert rows[1][expected.index("Received by")] and rows[1][-1] == ""
     new_q3 = {**ORGS["Demo Night Shelter"]["q3"], "required_fields": ORGS["Demo Night Shelter"]["q3"]["required_fields"] + ["allergen_info"]}
     client.put("/orgs/me/intake/Q3", json=new_q3, headers=om)
     rows2, _ = _rows(client, om)

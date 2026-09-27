@@ -22,10 +22,9 @@ def test_fictional_accounts_per_spec(seeded):
     for role in ("restaurant_staff", "restaurant_manager", "volunteer", "org_staff", "org_manager", "admin"):
         assert db.query(User).filter_by(role=role, is_demo_account=True).count() >= 1
     profiles = {p.organization.name: p for p in db.query(ReceiverProfile)}
-    assert profiles["Demo Food Bank"].accepts_hot is False and profiles["Demo Food Bank"].schedule["sun"] == []
-    assert profiles["Demo Night Shelter"].accepts_hot and "temperature_at_receipt" in profiles["Demo Night Shelter"].required_fields
+    assert profiles["Demo Food Bank"].max_meals_per_delivery == 150 and profiles["Demo Food Bank"].schedule["sun"] == []
+    assert "received_by_name" in profiles["Demo Night Shelter"].required_fields
     assert profiles["Demo Community Fridge"].schedule["mon"] == [["00:00", "24:00"]] and profiles["Demo Community Fridge"].curbside_ok
-    assert profiles["Demo Community Fridge"].accepts_hot is False and profiles["Demo Community Fridge"].accepts_frozen is False
     assert profiles["Demo Halal Pantry"].dietary_rules == ["halal_only"]
 
 

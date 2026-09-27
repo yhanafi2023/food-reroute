@@ -8,7 +8,7 @@ import { DEMO_PASSWORD, HOME_FOR_ROLE, useAuth } from "@/lib/auth";
 
 const DEMO: { role: string; email: string; who: string; icon: IconName }[] = [
   { role: "Restaurant", email: "manager@casa-demo.example.com", who: "Casa Demo Cocina", icon: "restaurant" },
-  { role: "Volunteer", email: "marcus@volunteer-demo.example.com", who: "Marcus", icon: "driver" },
+  { role: "Driver", email: "marcus@volunteer-demo.example.com", who: "Marcus", icon: "driver" },
   { role: "Organization", email: "manager@shelter-demo.example.com", who: "Demo Night Shelter", icon: "community-org" },
   { role: "Admin", email: "admin@foodflow-demo.example.com", who: "Network view", icon: "stats" },
 ];

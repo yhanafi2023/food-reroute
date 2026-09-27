@@ -13,7 +13,7 @@ const STEPS: { icon: IconName; title: string; text: string }[] = [
 
 const USERS: { icon: IconName; who: string; what: string }[] = [
   { icon: "restaurant", who: "Restaurants", what: "post surplus in under a minute." },
-  { icon: "driver", who: "Volunteer drivers", what: "get one clear offer and one next step at a time." },
+  { icon: "driver", who: "Drivers", what: "get one clear offer and one next step at a time." },
   { icon: "community-org", who: "Organizations", what: "post needs and confirm what arrives." },
   { icon: "stats", who: "Coordinators", what: "watch the whole network live." },
 ];
@@ -31,7 +31,7 @@ export default function Landing() {
             <p className="max-w-[62ch] text-lg text-ink-2">
               Restaurants have safe surplus food tonight. Food banks, shelters and school pantries need it tonight.
               FoodFlow matches the two, splits each donation across the organizations that need it, and routes a
-              volunteer driver before the food expires.
+              driver before the food expires.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <Link href="/signup" className="btn btn-primary btn-lg">Get Started</Link>

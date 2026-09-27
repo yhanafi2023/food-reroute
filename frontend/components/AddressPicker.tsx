@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 export interface PickedAddress { address: string; lat: number; lng: number }
 
 // Street address -> the point every route starts or ends at (backend /geo/search). The person picks
-// the right match from the list and sees the pin, so volunteers are never sent to a guessed spot.
+// the right match from the list and sees the pin, so drivers are never sent to a guessed spot.
 export default function AddressPicker({ label, value, onChange }: {
   label: string; value: PickedAddress | null; onChange: (picked: PickedAddress | null) => void;
 }) {

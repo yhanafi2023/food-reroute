@@ -72,7 +72,7 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
             trip.handoff_state = None
             lifecycle.end_trip(db, trip, "reassigned", None, reason="simulated vehicle left: load window missed")
             dispatch.requeue(db, trip.rescue, None, "the simulated vehicle left after the load window was missed; "
-                                                    "a volunteer will take over", volunteer_only=True)
+                                                    "a driver will take over", volunteer_only=True)
             counts["av_load_missed"] += 1
         elif trip.handoff_state == "in_transit" and stop and now >= stop.eta_at:
             handoff.arrive_at_dropoff(db, trip)
@@ -90,10 +90,10 @@ def run_jobs(db: Session, reports: bool = True) -> Dict[str, int]:
             vol = trip.volunteer_user_id
             audit.log(db, "volunteer_no_show", entity="trip", rescue_id=trip.rescue_id, trip_id=trip.id,
                       details={"expected_pickup": trip.eta_pickup_at.isoformat(), "grace_min": NO_SHOW_GRACE_MIN})
-            lifecycle.end_trip(db, trip, "reassigned", None, reason="volunteer did not arrive")
+            lifecycle.end_trip(db, trip, "reassigned", None, reason="driver did not arrive")
             notify.send(db, [trip.volunteer], "reassigned", "Trip reassigned",
                         f"Rescue #{trip.rescue_id} was reassigned because you had not arrived.", dedupe=f"noshow:{trip.id}")
-            dispatch.requeue(db, trip.rescue, None, "the volunteer did not arrive", exclude_volunteer=vol)
+            dispatch.requeue(db, trip.rescue, None, "the driver did not arrive", exclude_volunteer=vol)
             counts["no_shows"] += 1
 
     # approaching warnings

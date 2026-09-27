@@ -52,56 +52,56 @@ EVERY_DAY = lambda windows: {d: windows for d in DAYS}  # noqa: E731
 SKIP_TABLES = {"login_attempts", "job_locks", "idempotency_records", "notifications"}
 
 # name, lat, lng, closing, staffed_until, totes, fmv/meal, basis/meal, 25% election, surplus usually,
-# (manager, staff), menu: (description, category, unit, quantity range, allergens, dietary tags)
+# (manager, staff), menu: (description, unit, quantity range, allergens, dietary tags)
 RESTAURANTS = [
     ("Casa Luna Cocina", 25.7630, -80.3690, "22:00", "23:30", 6, 9.0, 3.0, False, "after dinner service, 9:30 to 10 PM",
      ("Luis Ferrer", "Rosa Delgado"),
-     [("Rice, black beans and roast chicken", "hot", "tray", (2, 4), [], []),
-      ("Picadillo with white rice", "hot", "half_pan", (2, 3), [], ["contains_beef"]),
-      ("Sweet plantains and yellow rice", "hot", "tray", (1, 3), [], ["vegetarian"]),
-      ("Cuban sandwiches, halved", "cold", "box", (2, 4), ["gluten", "dairy"], ["contains_pork"])]),
+     [("Rice, black beans and roast chicken", "tray", (2, 4), [], []),
+      ("Picadillo with white rice", "half_pan", (2, 3), [], ["contains_beef"]),
+      ("Sweet plantains and yellow rice", "tray", (1, 3), [], ["vegetarian"]),
+      ("Cuban sandwiches, halved", "box", (2, 4), ["gluten", "dairy"], ["contains_pork"])]),
     ("Sunrise Bakehouse", 25.7700, -80.3450, "20:00", "21:00", 2, 4.0, None, True, "at closing, 8 PM",
      ("Hannah Weiss", "Tyler Brooks"),
-     [("Day-old bagels and rolls", "shelf_stable", "bag", (3, 6), ["gluten", "sesame"], ["vegetarian"]),
-      ("Croissants and muffins", "shelf_stable", "box", (2, 4), ["gluten", "dairy", "eggs"], ["vegetarian"]),
-      ("Whole wheat sandwich loaves", "shelf_stable", "bag", (2, 5), ["gluten"], ["vegan"])]),
+     [("Day-old bagels and rolls", "bag", (3, 6), ["gluten", "sesame"], ["vegetarian"]),
+      ("Croissants and muffins", "box", (2, 4), ["gluten", "dairy", "eggs"], ["vegetarian"]),
+      ("Whole wheat sandwich loaves", "bag", (2, 5), ["gluten"], ["vegan"])]),
     ("Northside Grill", 25.7930, -80.3500, "00:00", "01:00", 4, 11.0, 4.0, False, "late night, 11 PM to midnight",
      ("Derek Collins", "Maya Johnson"),
-     [("Grilled chicken wraps", "cold", "bag", (2, 4), ["gluten"], []),
-      ("Garden salads with dressing on the side", "cold", "bag", (2, 3), [], ["vegetarian"]),
-      ("Burger patties and buns", "hot", "tray", (1, 3), ["gluten"], ["contains_beef"])]),
+     [("Grilled chicken wraps", "bag", (2, 4), ["gluten"], []),
+      ("Garden salads with dressing on the side", "bag", (2, 3), [], ["vegetarian"]),
+      ("Burger patties and buns", "tray", (1, 3), ["gluten"], ["contains_beef"])]),
     ("Coral Pizza Co.", 25.7350, -80.3600, "22:00", "22:30", 0, 3.5, 1.2, False, "at closing",
      ("Anthony Russo", "Bella Marino"),
-     [("Cheese and veggie pizzas", "hot", "box", (3, 6), ["gluten", "dairy"], ["vegetarian"]),
-      ("Boxed garlic knots", "shelf_stable", "box", (2, 4), ["gluten", "dairy"], ["vegetarian"])]),
+     [("Cheese and veggie pizzas", "box", (3, 6), ["gluten", "dairy"], ["vegetarian"]),
+      ("Boxed garlic knots", "box", (2, 4), ["gluten", "dairy"], ["vegetarian"])]),
     ("Westend Buffet", 25.7580, -80.4000, "23:00", "00:30", 8, 7.0, 2.5, False, "after the 10 PM buffet close",
      ("Kenji Watanabe", "Carla Mendes"),
-     [("Buffet trays: lo mein and vegetables", "hot", "half_pan", (2, 4), ["gluten", "soy"], ["vegetarian"]),
-      ("Buffet trays: fried rice and chicken", "hot", "full_pan", (1, 2), ["soy", "eggs"], []),
-      ("Shrimp and vegetable stir-fry", "hot", "half_pan", (1, 2), ["shellfish", "soy"], [])]),
+     [("Buffet trays: lo mein and vegetables", "half_pan", (2, 4), ["gluten", "soy"], ["vegetarian"]),
+      ("Buffet trays: fried rice and chicken", "full_pan", (1, 2), ["soy", "eggs"], []),
+      ("Shrimp and vegetable stir-fry", "half_pan", (1, 2), ["shellfish", "soy"], [])]),
     ("Palm Leaf Thai Kitchen", 25.7505, -80.3405, "22:00", "22:30", 3, 10.0, 3.5, False, "after 9:30 PM",
      ("Nok Srisai", "Ben Carter"),
-     [("Pad thai with tofu", "hot", "tray", (2, 3), ["peanuts", "soy", "eggs"], ["vegetarian"]),
-      ("Green curry and jasmine rice", "hot", "half_pan", (1, 3), [], []),
-      ("Fresh spring rolls", "cold", "box", (2, 3), ["soy"], ["vegan"])]),
+     [("Pad thai with tofu", "tray", (2, 3), ["peanuts", "soy", "eggs"], ["vegetarian"]),
+      ("Green curry and jasmine rice", "half_pan", (1, 3), [], []),
+      ("Fresh spring rolls", "box", (2, 3), ["soy"], ["vegan"])]),
     ("Mango Tree Cafe", 25.7665, -80.3820, "21:00", "21:30", 2, 8.0, 2.8, False, "at closing, 9 PM",
      ("Sofia Reyes", "Jordan Lee"),
-     [("Black bean and quinoa bowls", "cold", "individual_meal", (10, 20), [], ["vegan"]),
-      ("Turkey and avocado sandwiches", "cold", "individual_meal", (8, 16), ["gluten"], []),
-      ("Lentil soup", "hot", "half_pan", (1, 2), [], ["vegan"])]),
+     [("Black bean and quinoa bowls", "individual_meal", (10, 20), [], ["vegan"]),
+      ("Turkey and avocado sandwiches", "individual_meal", (8, 16), ["gluten"], []),
+      ("Lentil soup", "half_pan", (1, 2), [], ["vegan"])]),
     ("Harbor Poke Bar", 25.7440, -80.3710, "21:30", "22:00", 2, 12.0, 4.5, False, "after 9 PM",
      ("Kai Nakamura", "Leilani Park"),
-     [("Salmon poke bowls", "cold", "individual_meal", (6, 14), ["fish", "soy", "sesame"], []),
-      ("Tofu poke bowls", "cold", "individual_meal", (5, 10), ["soy", "sesame"], ["vegan"])]),
+     [("Salmon poke bowls", "individual_meal", (6, 14), ["fish", "soy", "sesame"], []),
+      ("Tofu poke bowls", "individual_meal", (5, 10), ["soy", "sesame"], ["vegan"])]),
     ("Bluebird Diner", 25.7800, -80.3620, "23:00", "23:30", 4, 8.5, 3.0, False, "late evening",
      ("Frank Donnelly", "Erin Walsh"),
-     [("Mac and cheese", "hot", "half_pan", (1, 3), ["gluten", "dairy"], ["vegetarian"]),
-      ("Meatloaf and mashed potatoes", "hot", "tray", (2, 3), ["dairy", "eggs"], ["contains_beef"]),
-      ("Frozen pancake packs", "frozen", "bag", (2, 4), ["gluten", "dairy", "eggs"], ["vegetarian"])]),
+     [("Mac and cheese", "half_pan", (1, 3), ["gluten", "dairy"], ["vegetarian"]),
+      ("Meatloaf and mashed potatoes", "tray", (2, 3), ["dairy", "eggs"], ["contains_beef"]),
+      ("Frozen pancake packs", "bag", (2, 4), ["gluten", "dairy", "eggs"], ["vegetarian"])]),
     ("Green Fork Salads", 25.7560, -80.3530, "20:30", "21:00", 2, 9.5, 3.2, False, "at closing, 8:30 PM",
      ("Olivia Grant", "Marcus Hale"),
-     [("Kale caesar salads", "cold", "individual_meal", (8, 16), ["dairy", "eggs", "fish"], ["vegetarian"]),
-      ("Mediterranean grain bowls", "cold", "individual_meal", (8, 14), ["sesame"], ["vegan", "halal"])]),
+     [("Kale caesar salads", "individual_meal", (8, 16), ["dairy", "eggs", "fish"], ["vegetarian"]),
+      ("Mediterranean grain bowls", "individual_meal", (8, 14), ["sesame"], ["vegan", "halal"])]),
 ]
 
 # receivers: intake answers (Q1 receiving, Q2 food, Q3 records) as in app/seed.py, (manager, staff)
@@ -112,10 +112,9 @@ RECEIVERS = {
                 cutoff_minutes=30, receiving_contact_name="Andre Jackson", receiving_contact_phone="305-555-0101",
                 receiving_instructions="Loading dock at the back, ring the bell.", curbside_ok=True,
                 curb_location="Loading dock driveway"),
-        q2=dict(accepts_hot=False, accepts_cold=True, fridge_capacity_meals=200, accepts_frozen=True,
-                freezer_capacity_meals=150, accepts_shelf_stable=True, dietary_rules=[], refused_allergens=[],
+        q2=dict(dietary_rules=[], refused_allergens=[],
                 max_meals_per_delivery=150, typical_nightly_need=100),
-        q3=dict(required_fields=["date_time", "donor_name", "donor_address", "food_description", "food_category",
+        q3=dict(required_fields=["date_time", "donor_name", "donor_address", "food_description",
                                  "quantity_meals", "weight_lbs"],
                 report_frequency="monthly", report_format="csv", reports_to="Regional food bank network (fictional)",
                 is_501c3=True, ein="00-0000001"),
@@ -126,11 +125,9 @@ RECEIVERS = {
                 receiving_contact_name="Tomas Rivera", receiving_contact_phone="305-555-0102",
                 receiving_instructions="Side door on the east wall, doorbell.", curbside_ok=True,
                 curb_location="East side door, loading zone"),
-        q2=dict(accepts_hot=True, hot_max_minutes=45, can_hold_hot=True, serves_immediately="dinner 6 to 8 PM",
-                accepts_cold=True, fridge_capacity_meals=60, accepts_frozen=False, accepts_shelf_stable=True,
-                dietary_rules=[], refused_allergens=[], max_meals_per_delivery=80, typical_nightly_need=60),
+        q2=dict(dietary_rules=[], refused_allergens=[], max_meals_per_delivery=80, typical_nightly_need=60),
         q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals",
-                                 "temperature_at_receipt", "condition", "received_by_name"],
+                                 "condition", "received_by_name"],
                 report_frequency="per_delivery", report_format="pdf", reports_to="City homeless services program (fictional)",
                 is_501c3=True, ein="00-0000002"),
         verified=True),
@@ -140,8 +137,7 @@ RECEIVERS = {
                 receiving_contact_name="Fridge steward on call", receiving_contact_phone="305-555-0103",
                 receiving_instructions="Fridge is outside by the front gate; label with date.", curbside_ok=True,
                 curb_location="Front gate"),
-        q2=dict(accepts_hot=False, accepts_cold=True, fridge_capacity_meals=40, accepts_frozen=False,
-                accepts_shelf_stable=True, dietary_rules=[], refused_allergens=[], max_meals_per_delivery=40,
+        q2=dict(dietary_rules=[], refused_allergens=[], max_meals_per_delivery=40,
                 typical_nightly_need=30),
         q3=dict(required_fields=["date_time", "food_description", "quantity_meals"], report_frequency="weekly",
                 report_format="csv", reports_to="", is_501c3=False, ein=None),
@@ -151,9 +147,7 @@ RECEIVERS = {
         q1=dict(schedule={**{d: [["10:00", "20:00"]] for d in DAYS[:6]}, "sun": []}, cutoff_minutes=30,
                 receiving_contact_name="Amina Saleh", receiving_contact_phone="305-555-0104",
                 receiving_instructions="Front office.", curbside_ok=False, curb_location=""),
-        q2=dict(accepts_hot=True, hot_max_minutes=30, can_hold_hot=False, serves_immediately="",
-                accepts_cold=True, fridge_capacity_meals=50, accepts_frozen=False, accepts_shelf_stable=True,
-                dietary_rules=["halal_only"], refused_allergens=["peanuts"], max_meals_per_delivery=60,
+        q2=dict(dietary_rules=["halal_only"], refused_allergens=["peanuts"], max_meals_per_delivery=60,
                 typical_nightly_need=40),
         q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals", "allergen_info"],
                 report_frequency="monthly", report_format="pdf", reports_to="Community committee (fictional)",
@@ -165,9 +159,7 @@ RECEIVERS = {
                 receiving_contact_name="Victor Pena", receiving_contact_phone="305-555-0105",
                 receiving_instructions="Kitchen entrance off the parking lot.", curbside_ok=True,
                 curb_location="Parking lot, kitchen door"),
-        q2=dict(accepts_hot=True, hot_max_minutes=60, can_hold_hot=True, serves_immediately="dinner 5:30 to 7:30 PM",
-                accepts_cold=True, fridge_capacity_meals=90, accepts_frozen=True, freezer_capacity_meals=60,
-                accepts_shelf_stable=True, dietary_rules=[], refused_allergens=[], max_meals_per_delivery=100,
+        q2=dict(dietary_rules=[], refused_allergens=[], max_meals_per_delivery=100,
                 typical_nightly_need=70),
         q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals", "condition"],
                 report_frequency="monthly", report_format="csv", reports_to="County family services (fictional)",
@@ -179,8 +171,7 @@ RECEIVERS = {
                 receiving_contact_name="Nadia Flores", receiving_contact_phone="305-555-0106",
                 receiving_instructions="Main office, ask at the front desk.", curbside_ok=True,
                 curb_location="Front entrance"),
-        q2=dict(accepts_hot=False, accepts_cold=True, fridge_capacity_meals=40, accepts_frozen=False,
-                accepts_shelf_stable=True, dietary_rules=[], refused_allergens=["peanuts", "tree_nuts"],
+        q2=dict(dietary_rules=[], refused_allergens=["peanuts", "tree_nuts"],
                 max_meals_per_delivery=50, typical_nightly_need=35),
         q3=dict(required_fields=["date_time", "donor_name", "food_description", "quantity_meals", "allergen_info"],
                 report_frequency="monthly", report_format="csv", reports_to="After-school program board (fictional)",
@@ -276,7 +267,7 @@ def seed_accounts(db: Session, admin_email: str, admin_name: str) -> None:
             profile = db.get(ReceiverProfile, org.id)
             profile.ein_verified, profile.ein_verified_by, profile.ein_verified_at = True, admin.id, clock.now()
     for i, (name, lat, lng, avail, cap, cooler, bags, max_mi, vehicle) in enumerate(VOLUNTEERS):
-        u = _user(db, _email(name, "volunteer"), name, "volunteer", phone=f"305-555-04{i:02d}")
+        u = _user(db, _email(name, "driver"), name, "volunteer", phone=f"305-555-04{i:02d}")
         db.add(VolunteerProfile(user_id=u.id, availability=avail, capacity_meals=cap, has_cooler=cooler,
                                 has_insulated_bags=bags, max_distance_mi=max_mi, vehicle_description=vehicle,
                                 home_lat=lat, home_lng=lng))
@@ -304,10 +295,10 @@ def history(db: Session, days: int, rng: random.Random) -> dict:
             plan = sorted(((_at_local(day, r[3], rng.randint(20, 50)), r) for r in picks), key=lambda p: p[0])
             for when, r in plan:
                 name, menu = r[0], r[11]
-                desc, cat, unit, (lo, hi), allergens, tags = rng.choice(menu)
+                desc, unit, (lo, hi), allergens, tags = rng.choice(menu)
                 fc.current = max(fc.now(), when)
                 try:
-                    rescue = _post(db, name, quantity=rng.randint(lo, hi), unit=unit, category=cat, description=desc,
+                    rescue = _post(db, name, quantity=rng.randint(lo, hi), unit=unit, description=desc,
                                    allergens=allergens, dietary_tags=tags, deadline_min=rng.choice([60, 75, 90, 120]))
                     stats["posted"] += 1
                     roll = rng.random()
@@ -328,7 +319,7 @@ def history(db: Session, days: int, rng: random.Random) -> dict:
                         receipts = {s.organization.name: ("partially_accepted", max(1, s.allocated_meals // 2),
                                                           rng.choice(["packaging", "quantity", "temperature"]),
                                                           rng.choice(["two pans arrived uncovered", "more than we can store tonight",
-                                                                      "one tray below safe temperature"]))
+                                                                      "one tray was not covered"]))
                                     for t in trips for s in t.stops}
                         for t in trips:
                             complete(db, fc, t, receipts)

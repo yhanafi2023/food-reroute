@@ -22,11 +22,11 @@ def client(fake_clock):
 
 
 def body(**kw):
-    return {"quantity": 2, "unit": "half_pan", "category": "hot", "attested": True,
+    return {"quantity": 2, "unit": "half_pan", "attested": True,
             "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z", **kw}
 
 
-def test_quick_post_needs_only_four_fields_plus_attestation(client):
+def test_quick_post_needs_only_three_fields_plus_attestation(client):
     h = signin(client, EMAILS["restaurant_staff"])
     r = client.post("/rescues", json=body(), headers=h)
     assert r.status_code == 200
@@ -35,24 +35,24 @@ def test_quick_post_needs_only_four_fields_plus_attestation(client):
     assert x["attested_by"] is not None and x["attested_at"]
     assert x["pickup_instructions"].startswith("Back door")  # default from the restaurant profile
     assert client.post("/rescues", json=body(attested=False), headers=h).status_code == 422
-    assert client.post("/rescues", json={k: v for k, v in body().items() if k != "category"}, headers=h).status_code == 422
+    assert "category" not in x  # no food category: any food goes to any driver and any org
+    assert client.post("/rescues", json={k: v for k, v in body().items() if k != "unit"}, headers=h).status_code == 422
     assert client.post("/rescues", json=body(unit="bucket"), headers=h).status_code == 422
     assert client.get("/config/assumptions").json()["unit_to_meals"]["kind"] == "assumption"
 
 
-def test_safe_until_defaults_by_category_and_caps_the_deadline(client, fake_clock):
+def test_safe_until_defaults_to_one_window_and_caps_the_deadline(client, fake_clock):
     h = signin(client, EMAILS["restaurant_staff"])
-    for cat in ("hot", "cold", "shelf_stable"):
-        x = client.post("/rescues", json=body(category=cat, unit="bag", quantity=1 + len(cat),
-                                               pickup_deadline=(clock.now() + timedelta(days=3)).isoformat() + "Z"),
-                        headers=h).json()
-        from datetime import datetime
-        safe = datetime.fromisoformat(x["rescue"]["safe_until"].rstrip("Z"))
-        assert safe == clock.now() + timedelta(hours=SAFE_UNTIL_HOURS[cat])
-        assert x["rescue"]["pickup_deadline"] == x["rescue"]["safe_until"]  # capped to safe-until
-        assert any("safe-until" in w for w in x["warnings"])
-    old = body(prepared_at=(clock.now() - timedelta(hours=3)).isoformat() + "Z")
-    assert client.post("/rescues", json=old, headers=h).status_code == 422  # hot food prepared 3 h ago
+    x = client.post("/rescues", json=body(unit="bag", quantity=3,
+                                           pickup_deadline=(clock.now() + timedelta(days=3)).isoformat() + "Z"),
+                    headers=h).json()
+    from datetime import datetime
+    safe = datetime.fromisoformat(x["rescue"]["safe_until"].rstrip("Z"))
+    assert safe == clock.now() + timedelta(hours=SAFE_UNTIL_HOURS)
+    assert x["rescue"]["pickup_deadline"] == x["rescue"]["safe_until"]  # capped to safe-until
+    assert any("safe-until" in w for w in x["warnings"])
+    old = body(prepared_at=(clock.now() - timedelta(hours=SAFE_UNTIL_HOURS + 1)).isoformat() + "Z")
+    assert client.post("/rescues", json=old, headers=h).status_code == 422  # prepared too long ago
 
 
 def test_safety_fields_are_stored(client):

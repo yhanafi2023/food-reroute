@@ -13,7 +13,7 @@ from app.db import get_db
 from app.fleet import geofence
 from app.fleet.base import Cargo
 from app.fleet.simulated import SimulatedSidewalkRobotProvider, SimulatedWaymoProvider
-from app.fleet.volunteers import EQUIPMENT, VolunteerProvider, is_available, origin
+from app.fleet.volunteers import VolunteerProvider, is_available, origin
 from app.intelligence.eta.features import haversine_miles
 from app.models import ReceiverProfile, Rescue, Trip, TripStop, User, VolunteerProfile
 from app.views import iso, rescue_json, stop_json, trip_json
@@ -104,7 +104,7 @@ def _accept(db: Session, t: Trip, user: User, where: Where) -> None:
     _location(db, user, where)
     lifecycle.set_trip_status(db, t, "en_route_pickup", user, where.lat, where.lng)
     notify.send(db, db.query(User).filter_by(organization_id=t.rescue.restaurant_org_id, active=True).all(), "matched",
-                "Volunteer on the way", f"{user.first_name} accepted rescue #{t.rescue_id}, pickup around "
+                "Driver on the way", f"{user.first_name} accepted rescue #{t.rescue_id}, pickup around "
                 f"{clock.fmt_local(t.eta_pickup_at)}.", dedupe=f"accepted:{t.id}")
 
 
@@ -119,9 +119,7 @@ def accept(trip_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER)
 # ---------- finding work: "I'm free now", open rescues nearby, claim one ----------
 
 YOUR_REASON = {"too_far": "it is farther than your maximum distance",
-               "no_equipment": "this food needs a cooler or insulated bags you don't have",
-               "too_small": "your vehicle doesn't have room for this many meals",
-               "unavailable_now": "you are not available right now"}
+               "unavailable_now": "you are not on the job right now"}
 
 
 class FreeNowIn(Where):
@@ -155,7 +153,7 @@ def my_availability(user: User = Depends(VOLUNTEER), db: Session = Depends(get_d
 @router.post("/volunteers/me/availability")
 def set_free_now(body: FreeNowIn, user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
     """Switch "I'm free now" on for `minutes` (or off with 0). Switching on offers the most urgent
-    open rescue this volunteer can take straight away, instead of waiting for the next job run."""
+    open rescue this driver can take straight away, instead of waiting for the next job run."""
     v = db.get(VolunteerProfile, user.id)
     _location(db, user, body)
     v.available_until = clock.now() + timedelta(minutes=body.minutes) if body.minutes else None
@@ -173,7 +171,7 @@ def set_free_now(body: FreeNowIn, user: User = Depends(VOLUNTEER), db: Session =
 
 @router.get("/volunteers/me/open-rescues")
 def open_rescues(user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
-    """Posted rescues nobody has taken yet, nearest first, with whether this volunteer can carry them."""
+    """Posted rescues nobody has taken yet, nearest first. A driver can take any of them within their distance."""
     v = db.get(VolunteerProfile, user.id)
     here = origin(v, clock.now())
     out = []
@@ -181,17 +179,12 @@ def open_rescues(user: User = Depends(VOLUNTEER), db: Session = Depends(get_db))
         miles = haversine_miles(here[0], here[1], r.restaurant.lat, r.restaurant.lng)
         if miles > max(v.max_distance_mi, 1) * 2:
             continue
-        need = EQUIPMENT.get(r.category)
         problems = []
         if miles > v.max_distance_mi:
             problems.append(f"{miles:.1f} mi away, past your {v.max_distance_mi:g} mi limit")
-        if need and not getattr(v, need[0]):
-            problems.append(f"needs {need[1]}")
-        if v.capacity_meals < r.est_meals:
-            problems.append(f"{r.est_meals} meals, more than your {v.capacity_meals}-meal capacity")
         out.append({"id": r.id, "restaurant": {"name": r.restaurant.name, "address": r.restaurant.address,
                                                "lat": r.restaurant.lat, "lng": r.restaurant.lng},
-                    "est_meals": r.est_meals, "category": r.category, "description": r.description,
+                    "est_meals": r.est_meals, "description": r.description,
                     "allergens": r.allergens or [], "pickup_deadline": iso(r.pickup_deadline),
                     "miles": round(miles, 1), "can_take": not problems, "problems": problems})
     out.sort(key=lambda o: (not o["can_take"], o["miles"]))
@@ -200,7 +193,7 @@ def open_rescues(user: User = Depends(VOLUNTEER), db: Session = Depends(get_db))
 
 @router.post("/volunteers/me/open-rescues/{rescue_id}/claim")
 def claim(rescue_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER), db: Session = Depends(get_db)):
-    """Take an open rescue: match it to this volunteer only and accept it in one step."""
+    """Take an open rescue: match it to this driver only and accept it in one step."""
     rescue = db.get(Rescue, rescue_id)
     if rescue is None or rescue.is_draft:
         raise HTTPException(404, "Rescue not found")
@@ -214,7 +207,7 @@ def claim(rescue_id: int, where: Where = Where(), user: User = Depends(VOLUNTEER
     if not v.available_until or v.available_until < soon:
         v.available_until = soon  # taking a job means being free for it
     fits, why = VolunteerProvider(db, only_user_id=user.id).candidates(
-        (rescue.restaurant.lat, rescue.restaurant.lng), Cargo(rescue.est_meals, rescue.category), clock.now(), 0)
+        (rescue.restaurant.lat, rescue.restaurant.lng), Cargo(rescue.est_meals), clock.now(), 0)
     if not fits:
         db.commit()
         reasons = [YOUR_REASON[k] for k, n in why.items() if n and k in YOUR_REASON]
@@ -235,8 +228,8 @@ def decline(trip_id: int, user: User = Depends(VOLUNTEER), db: Session = Depends
     t = _my_trip(db, trip_id, user)
     if t.status != "matched":
         raise HTTPException(409, "Only an offer can be declined; use cancel for an accepted trip")
-    lifecycle.end_trip(db, t, "reassigned", user, reason="volunteer declined")
-    dispatch.requeue(db, t.rescue, user, "the volunteer declined", exclude_volunteer=user.id)
+    lifecycle.end_trip(db, t, "reassigned", user, reason="driver declined")
+    dispatch.requeue(db, t.rescue, user, "the driver declined", exclude_volunteer=user.id)
     db.commit()
     return {"ok": True}
 
@@ -246,8 +239,8 @@ def carrier_cancel(trip_id: int, user: User = Depends(VOLUNTEER), db: Session = 
     t = _my_trip(db, trip_id, user)
     if t.status not in ("matched", "en_route_pickup"):
         raise HTTPException(409, "After pickup the food must be delivered; contact the receiving org if there is a problem")
-    lifecycle.end_trip(db, t, "reassigned", user, reason="volunteer cancelled")
-    dispatch.requeue(db, t.rescue, user, "the volunteer cancelled", exclude_volunteer=user.id)
+    lifecycle.end_trip(db, t, "reassigned", user, reason="driver cancelled")
+    dispatch.requeue(db, t.rescue, user, "the driver cancelled", exclude_volunteer=user.id)
     db.commit()
     return {"ok": True}
 

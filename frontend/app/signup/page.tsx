@@ -12,7 +12,7 @@ type AccountType = "restaurant" | "receiver" | "volunteer";
 const TYPES: { value: AccountType; label: string; text: string; icon: IconName }[] = [
   { value: "restaurant", label: "Restaurant", text: "I have surplus food", icon: "restaurant" },
   { value: "receiver", label: "Organization", text: "We receive and distribute food", icon: "community-org" },
-  { value: "volunteer", label: "Volunteer", text: "I can pick up and deliver", icon: "driver" },
+  { value: "volunteer", label: "Driver", text: "I can pick up and deliver", icon: "driver" },
 ];
 
 // Miami-Dade / FIU area, used only if the browser does not share a location.

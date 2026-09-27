@@ -4,7 +4,7 @@ import { api } from "./api";
 
 const SEND_EVERY_MS = 10000;
 
-// Shares the volunteer's phone GPS with FoodFlow while `enabled`. Sends at most every 10 s.
+// Shares the driver's phone GPS with FoodFlow while `enabled`. Sends at most every 10 s.
 export function useShareLocation(enabled: boolean) {
   const [status, setStatus] = useState<{ state: "off" | "waiting" | "sharing" | "error"; message?: string; sentAt?: number }>({ state: "off" });
   const lastSent = useRef(0);

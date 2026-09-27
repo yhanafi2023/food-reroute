@@ -36,7 +36,7 @@ from app.models import (
     MatchingExplanation, Organization, ReceiverProfile, Rescue, Trip, TripStop, User,
 )
 
-MODE_LABEL = {"volunteer": "Volunteer", "waymo_sim": "Simulated Waymo", "robot_sim": "Simulated sidewalk robot"}
+MODE_LABEL = {"volunteer": "Driver", "waymo_sim": "Simulated Waymo", "robot_sim": "Simulated sidewalk robot"}
 
 
 @dataclass
@@ -99,19 +99,19 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None,
     modes = {"volunteer"} if only_volunteer else set(rescue.allowed_modes or ["volunteer"])
     if only_volunteer:
         rescue.excluded_volunteer_ids = [v for v in rescue.excluded_volunteer_ids or [] if v != only_volunteer]
-    cargo = Cargo(rescue.est_meals, rescue.category, rescue.restaurant.restaurant_profile.totes_on_hand)
+    cargo = Cargo(rescue.est_meals, rescue.restaurant.restaurant_profile.totes_on_hand)
     vol_provider = VolunteerProvider(db, only_user_id=only_volunteer)
     av, robot = SimulatedWaymoProvider(db), SimulatedSidewalkRobotProvider(db)
 
     # 1. Earliest realistic pickup across allowed modes.
     vol_cands, vol_why = ([], {})
     if "volunteer" in modes:
-        vol_cands, vol_why = vol_provider.candidates(r_pt, Cargo(1, rescue.category), now, 45,
+        vol_cands, vol_why = vol_provider.candidates(r_pt, Cargo(1), now, 45,
                                                      exclude=rescue.excluded_volunteer_ids or [])
     pickup_options = [now + timedelta(minutes=c["pickup_minutes"]) for c in vol_cands]
     av_note = ""
     if "waymo_sim" in modes:
-        q = av.quote(r_pt, r_pt, Cargo(min(cargo.meals, 1), cargo.category, cargo.totes_available), now)
+        q = av.quote(r_pt, r_pt, Cargo(min(cargo.meals, 1), cargo.totes_available), now)
         if q.feasible and _restaurant_staffed(rescue, q.eta_pickup):
             pickup_options.append(q.eta_pickup)
         av_note = q.reason or ("" if q.feasible and _restaurant_staffed(rescue, q.eta_pickup) else "restaurant not staffed for a curbside pickup")
@@ -146,7 +146,7 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None,
               "priority": "MEDIUM", "deadline": intake.receiving_until(db, e["profile"], e["arrival"]).isoformat()
               if intake.receiving_until(db, e["profile"], e["arrival"]) else None,
               "distance_miles": e["distance"], "lat": e["org"].lat, "lng": e["org"].lng,
-              "constraints": {"category": rescue.category, "max_meals": e["capacity"], "curbside_ok": bool(e["profile"].curbside_ok),
+              "constraints": {"max_meals": e["capacity"], "curbside_ok": bool(e["profile"].curbside_ok),
                               "dietary_rules": e["profile"].dietary_rules, "refused_allergens": e["profile"].refused_allergens}}
              for e in eligible]
     # Score every eligible organization (distance/urgency/demand/capacity/community need) for
@@ -162,7 +162,7 @@ def run_matching(db: Session, rescue: Rescue, actor: Optional[User] = None,
     # 4. Mode selection.
     plans = choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now)
     if not plans:
-        why = describe_unavailable(vol_why) if "volunteer" in modes else "volunteers not allowed for this rescue"
+        why = describe_unavailable(vol_why) if "volunteer" in modes else "drivers not allowed for this rescue"
         _log_unmatched(db, rescue, actor, f"no carrier can make it in time: {why}; AV: {av_note or 'not feasible'}", attempt)
         return {"matched": False, "reason": "no feasible carrier", "why": why, "attempt": attempt}
 
@@ -201,7 +201,7 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
         pts = [r_pt] + [(e["org"].lat, e["org"].lng) for e, _ in ordered]
         seg, est, _ = clients.travel([(a, b, 0 if i == 0 else 1) for i, (a, b) in enumerate(zip(pts, pts[1:]))])
         trip_minutes = LOADING_MIN + sum(s["p50"] for s in seg)
-        cands, _ = vol_provider.candidates(r_pt, Cargo(total, rescue.category), now, trip_minutes,
+        cands, _ = vol_provider.candidates(r_pt, Cargo(total), now, trip_minutes,
                                            exclude=rescue.excluded_volunteer_ids or [])
         for c in cands:
             pickup_at = now + timedelta(minutes=c["pickup_minutes"])
@@ -228,7 +228,7 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
         dest = (e["org"].lat, e["org"].lng)
         options: List[TripPlan] = []
         for provider in ([av] if "waymo_sim" in modes else []) + ([robot] if "robot_sim" in modes else []):
-            q = provider.quote(r_pt, dest, Cargo(meals, rescue.category, rescue.restaurant.restaurant_profile.totes_on_hand
+            q = provider.quote(r_pt, dest, Cargo(meals, rescue.restaurant.restaurant_profile.totes_on_hand
                                                  - sum(p.totes for p in per_leg)), now)
             if not q.feasible or q.eta_pickup > rescue.pickup_deadline or not _restaurant_staffed(rescue, q.eta_pickup):
                 continue
@@ -240,7 +240,7 @@ def choose_plans(db, rescue, legs, modes, vol_provider, av, robot, now) -> List[
                                     leg_cost(db, provider.mode, rescue, now, arrival), totes=q.totes_needed, estimated=q.estimated))
         if "volunteer" in modes:
             seg, est, _ = clients.travel([(r_pt, dest, 0)])
-            cands, _ = vol_provider.candidates(r_pt, Cargo(meals, rescue.category), now, LOADING_MIN + seg[0]["p50"],
+            cands, _ = vol_provider.candidates(r_pt, Cargo(meals), now, LOADING_MIN + seg[0]["p50"],
                                                exclude=list(rescue.excluded_volunteer_ids or []) + list(used_volunteers))
             for c in cands:
                 pickup_at = now + timedelta(minutes=c["pickup_minutes"])
@@ -282,12 +282,12 @@ def _reason(db, rescue: Rescue, plan: TripPlan, vol_why: Dict[str, int], av_note
     if plan.mode == "volunteer":
         v = plan.volunteer
         stops = ", ".join(f"{l.meals} meals to {l.org.name}" for l in plan.legs)
-        return (f"Volunteer {v.first_name} selected: can reach the restaurant around {clock.fmt_local(plan.eta_pickup)} "
-                f"with the right equipment for {rescue.category.replace('_', '-')} food; {stops}.")
+        return (f"Driver {v.first_name} selected: nearest available driver, can reach the restaurant around "
+                f"{clock.fmt_local(plan.eta_pickup)}; {stops}.")
     curb = "with curbside staff" if stop.profile.curbside_ok else ""
-    vols = describe_unavailable(vol_why) if vol_why else "volunteers were slower"
-    if "no volunteer" not in vols:
-        vols = "a volunteer would arrive later or cost more"
+    vols = describe_unavailable(vol_why) if vol_why else "drivers were slower"
+    if "no driver" not in vols:
+        vols = "a driver would arrive later or cost more"
     return (f"{MODE_LABEL[plan.mode]} selected (simulated, no real vehicle): posted {posted}, {vols}, both sites in the "
             f"illustrative service zone, {stop.org.name} {until_text} {curb}".strip() + ".")
 
@@ -316,7 +316,7 @@ def create_trip(db: Session, rescue: Rescue, plan: TripPlan, estimated: bool, vo
     staff = _org_users(db, rescue.restaurant_org_id)
     if plan.mode == "volunteer":
         notify.send(db, [plan.volunteer], "offer", "New food rescue for you",
-                    f"{rescue.est_meals} meals ({rescue.category}) from {rescue.restaurant.name}. Accept in the app.",
+                    f"{rescue.est_meals} meals from {rescue.restaurant.name}. Accept in the app.",
                     dedupe=f"offer:{trip.id}")
     else:
         provider = SimulatedWaymoProvider(db) if plan.mode == "waymo_sim" else SimulatedSidewalkRobotProvider(db)
@@ -327,7 +327,7 @@ def create_trip(db: Session, rescue: Rescue, plan: TripPlan, estimated: bool, vo
                 f"Pickup code: {rescue.pickup_code}.", dedupe=f"matched:{trip.id}")
     for leg in plan.legs:
         notify.send(db, _org_users(db, leg.org.id), "matched", "Food is on the way",
-                    f"{leg.meals} meals ({rescue.category}) from {rescue.restaurant.name}, arriving around "
+                    f"{leg.meals} meals from {rescue.restaurant.name}, arriving around "
                     f"{clock.fmt_local(leg.arrival)} by {MODE_LABEL[plan.mode].lower()}.", dedupe=f"matched:{trip.id}:{leg.org.id}")
     return trip
 

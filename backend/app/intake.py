@@ -21,8 +21,8 @@ WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 DIETARY_RULES = ("halal_only", "kosher_only", "vegetarian_only", "vegan_only", "no_pork", "no_beef")
 DIETARY_TAGS = ("halal", "kosher", "vegetarian", "vegan", "contains_pork", "contains_beef", "no_pork", "no_beef")
 ALLERGENS = ("peanuts", "tree_nuts", "dairy", "eggs", "gluten", "soy", "fish", "shellfish", "sesame")
-RECORD_FIELDS = ("date_time", "donor_name", "donor_address", "food_description", "food_category", "quantity_meals",
-                 "weight_lbs", "temperature_at_receipt", "condition", "received_by_name", "allergen_info",
+RECORD_FIELDS = ("date_time", "donor_name", "donor_address", "food_description", "quantity_meals",
+                 "weight_lbs", "condition", "received_by_name", "allergen_info",
                  "donor_acknowledgment")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$")
 EIN_RE = re.compile(r"^\d{2}-\d{7}$")
@@ -78,32 +78,12 @@ class Q1(BaseModel):
 
 
 class Q2(BaseModel):
-    """Do you take hot food? (and cold, frozen, shelf-stable, dietary and allergen rules, capacity)"""
-    accepts_hot: bool
-    hot_max_minutes: Optional[int] = Field(default=None, gt=0, le=240)
-    can_hold_hot: Optional[bool] = None
-    serves_immediately: str = Field(default="", max_length=200)
-    accepts_cold: bool
-    fridge_capacity_meals: Optional[int] = Field(default=None, ge=0)
-    accepts_frozen: bool
-    freezer_capacity_meals: Optional[int] = Field(default=None, ge=0)
-    accepts_shelf_stable: bool
+    """How much food can you take? (plus dietary and allergen rules). Any kind of food is accepted:
+    there is no hot/cold/frozen/shelf-stable distinction."""
     dietary_rules: List[Literal[DIETARY_RULES]] = []  # type: ignore[valid-type]
     refused_allergens: List[Literal[ALLERGENS]] = []  # type: ignore[valid-type]
     max_meals_per_delivery: int = Field(gt=0, le=5000)
     typical_nightly_need: int = Field(ge=0, le=10000)
-
-    @model_validator(mode="after")
-    def _consistent(self):
-        if not (self.accepts_hot or self.accepts_cold or self.accepts_frozen or self.accepts_shelf_stable):
-            raise ValueError("accept at least one food category")
-        if self.accepts_hot and (self.hot_max_minutes is None or self.can_hold_hot is None):
-            raise ValueError("for hot food, give the longest pickup-to-arrival time you accept and whether you can hold it hot")
-        if self.accepts_cold and self.fridge_capacity_meals is None:
-            raise ValueError("give refrigeration capacity in meals")
-        if self.accepts_frozen and self.freezer_capacity_meals is None:
-            raise ValueError("give freezer capacity in meals")
-        return self
 
 
 class Q3(BaseModel):
@@ -158,7 +138,7 @@ def completeness(db: Session, org_id: int) -> Dict:
     latest = latest_answers(db, org_id)
     due_before = clock.now() - timedelta(days=INTAKE_CONFIRM_DAYS)
     questions = {}
-    for q, title in (("Q1", "When can you receive food?"), ("Q2", "Do you take hot food?"),
+    for q, title in (("Q1", "When can you receive food?"), ("Q2", "How much food can you take?"),
                      ("Q3", "What records do you need?")):
         a = latest.get(q)
         questions[q] = {

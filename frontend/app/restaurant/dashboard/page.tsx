@@ -8,20 +8,17 @@ import StatusTimeline from "@/components/StatusTimeline";
 import { api, isAbort } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
 import { clock, currentTrip, defaultDeadline, number, until } from "@/lib/format";
-import type { CreateRescueResponse, FoodCategory, FoodUnit, MatchingExplanation, Rescue } from "@/lib/types";
+import type { CreateRescueResponse, FoodUnit, MatchingExplanation, Rescue } from "@/lib/types";
 import { usePoll } from "@/lib/usePoll";
 
 const UNITS: { value: FoodUnit; label: string }[] = [
   { value: "individual_meal", label: "Individual meals" }, { value: "bag", label: "Bags" }, { value: "box", label: "Boxes" },
   { value: "tray", label: "Trays" }, { value: "half_pan", label: "Half pans" }, { value: "full_pan", label: "Full pans" },
 ];
-const CATEGORIES: { value: FoodCategory; label: string }[] = [
-  { value: "hot", label: "Hot" }, { value: "cold", label: "Cold" }, { value: "frozen", label: "Frozen" }, { value: "shelf_stable", label: "Shelf stable" },
-];
 
-const EMPTY = { quantity: "6", unit: "tray" as FoodUnit, category: "hot" as FoodCategory, pickup_deadline: "", description: "", attested: false };
+const EMPTY = { quantity: "6", unit: "tray" as FoodUnit, pickup_deadline: "", description: "", attested: false };
 
-// The volunteer types this at pickup to prove they have the food; until it is shown here, nobody can.
+// The driver types this at pickup to prove they have the food; until it is shown here, nobody can.
 function PickupCode({ rescue }: { rescue: Rescue }) {
   const waiting = ["posted", "matched", "en_route_pickup"].includes(rescue.status);
   if (!rescue.pickup_code || !waiting) return null;
@@ -70,7 +67,7 @@ export default function RestaurantDashboardPage() {
           method: "POST",
           signal: ctrl.signal,
           body: {
-            quantity: Number(form.quantity), unit: form.unit, category: form.category,
+            quantity: Number(form.quantity), unit: form.unit,
             pickup_deadline: new Date(form.pickup_deadline).toISOString(), attested: true,
             description: form.description,
           },
@@ -133,11 +130,6 @@ export default function RestaurantDashboardPage() {
               </select>
             </label>
           </div>
-          <label className="field"><span>Food category</span>
-            <select className="input" value={form.category} onChange={set("category")}>
-              {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </label>
           <label className="field"><span>Pickup deadline</span><input className="input" type="datetime-local" required value={form.pickup_deadline} onChange={set("pickup_deadline")} /></label>
           <label className="field"><span>Description</span><textarea className="input" value={form.description} onChange={set("description")} /></label>
           <label className="flex items-start gap-3 rounded-lg border border-line p-3">
@@ -186,7 +178,7 @@ export default function RestaurantDashboardPage() {
                 ) : (
                   <div key={r.id} className="panel panel-tight flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-col">
-                      <strong>{r.est_meals} meals · {r.category}</strong>
+                      <strong>{r.est_meals} meals{r.description ? ` · ${r.description}` : ""}</strong>
                       <span className="text-sm text-ink-3">
                         Pickup by {clock(r.pickup_deadline)}{trip ? ` · ${trip.carrier.type === "volunteer" ? trip.carrier.first_name : trip.carrier.label}` : ""}
                       </span>

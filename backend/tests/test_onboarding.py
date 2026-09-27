@@ -53,7 +53,7 @@ def test_answer_validation(client):
     assert client.put("/orgs/me/intake/Q1", json={**q1, "schedule": {**q1["schedule"], "mon": [["22:00", "02:00"]]}}, headers=mgr).status_code == 422
     assert client.put("/orgs/me/intake/Q1", json={**q1, "curbside_ok": True, "curb_location": ""}, headers=mgr).status_code == 422
     q2 = dict(ORGS["Demo Night Shelter"]["q2"])
-    assert client.put("/orgs/me/intake/Q2", json={**q2, "hot_max_minutes": None}, headers=mgr).status_code == 422
+    assert client.put("/orgs/me/intake/Q2", json={**q2, "max_meals_per_delivery": 0}, headers=mgr).status_code == 422
     assert client.put("/orgs/me/intake/Q2", json={**q2, "dietary_rules": ["only_pizza"]}, headers=mgr).status_code == 422
     q3 = dict(ORGS["Demo Night Shelter"]["q3"])
     assert client.put("/orgs/me/intake/Q3", json={**q3, "ein": None}, headers=mgr).status_code == 422
@@ -132,6 +132,6 @@ def test_restaurant_and_volunteer_profiles(client):
     assert r.status_code == 200 and r.json()["public_slug"]
     assert client.put("/restaurants/me/profile", json={**body, "closing_times": {"mon": "25:00"}}, headers=mgr).status_code == 422
     vol = signin(client, EMAILS["volunteer"])
-    v = {"availability": {"mon": [["17:00", "21:00"]]}, "max_distance_mi": 5, "capacity_meals": 30, "has_cooler": True,
-         "has_insulated_bags": False, "vehicle_description": "Gray SUV"}
-    assert client.put("/volunteers/me/profile", json=v, headers=vol).json()["capacity_meals"] == 30
+    v = {"availability": {"mon": [["17:00", "21:00"]]}, "max_distance_mi": 8, "vehicle_description": "Gray SUV"}
+    saved = client.put("/volunteers/me/profile", json=v, headers=vol).json()
+    assert saved["max_distance_mi"] == 8 and "has_cooler" not in saved  # no equipment questions for drivers

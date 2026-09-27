@@ -44,7 +44,7 @@ async def _scheduler():
             logging.getLogger("foodflow.jobs").exception("scheduled jobs failed")
 
 
-app = FastAPI(title="FoodFlow API", description="Food rescue logistics: restaurants, volunteers, simulated AVs, receiving orgs.",
+app = FastAPI(title="FoodFlow API", description="Food rescue logistics: restaurants, drivers, simulated AVs, receiving orgs.",
               lifespan=lifespan)
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_origin_regex=CORS_ORIGIN_REGEX,

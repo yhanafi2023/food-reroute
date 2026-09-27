@@ -1,4 +1,4 @@
-# A signed-in volunteer can find work right away: "I'm free now", the open-rescue list, and claiming one
+# A signed-in driver can find work right away: "I'm free now", the open-rescue list, and claiming one
 from datetime import timedelta
 
 import pytest
@@ -30,7 +30,7 @@ def client(fake_clock):
 def post_open(client):
     h = signin(client, EMAILS["restaurant_staff"])
     r = client.post("/rescues", headers=h, json={
-        "quantity": 2, "unit": "tray", "category": "hot", "attested": True, "description": "Rice and beans",
+        "quantity": 2, "unit": "tray", "attested": True, "description": "Rice and beans",
         "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z"})
     assert r.status_code == 200, r.text
     rescue = r.json()["rescue"]
@@ -75,16 +75,31 @@ def test_claim_matches_and_accepts_in_one_step(client):
     assert taken.status_code == 409 and "already took" in taken.json()["detail"]
 
 
-def test_claim_explains_why_a_volunteer_cannot_take_it(client):
+def test_claim_explains_why_a_driver_cannot_take_it(client):
     rid = post_open(client)["id"]
     h = signin(client, "aisha@volunteer-demo.example.com")
-    with SessionLocal() as db:  # her car is too small for 24 meals
+    with SessionLocal() as db:  # she only drives half a mile from home
         from app.models import User
         aisha = db.query(User).filter_by(email="aisha@volunteer-demo.example.com").one()
-        db.get(VolunteerProfile, aisha.id).capacity_meals = 5
+        db.get(VolunteerProfile, aisha.id).max_distance_mi = 0.5
         db.commit()
     r = client.post(f"/volunteers/me/open-rescues/{rid}/claim", headers=h, json={})
-    assert r.status_code == 409 and "room for this many meals" in r.json()["detail"]
+    assert r.status_code == 409 and "maximum distance" in r.json()["detail"]
+
+
+def test_any_driver_on_the_job_can_take_any_food(client):
+    rid = post_open(client)["id"]
+    h = signin(client, "aisha@volunteer-demo.example.com")
+    with SessionLocal() as db:  # no bags, no cooler, a tiny car: none of it matters any more
+        from app.models import User
+        aisha = db.query(User).filter_by(email="aisha@volunteer-demo.example.com").one()
+        v = db.get(VolunteerProfile, aisha.id)
+        v.has_cooler = v.has_insulated_bags = False
+        v.capacity_meals = 1
+        db.commit()
+    listed = client.get("/volunteers/me/open-rescues", headers=h).json()["rescues"]
+    assert [r["can_take"] for r in listed if r["id"] == rid] == [True]
+    assert client.post(f"/volunteers/me/open-rescues/{rid}/claim", headers=h, json={}).status_code == 200
 
 
 def test_restaurants_and_orgs_must_give_an_address(client):

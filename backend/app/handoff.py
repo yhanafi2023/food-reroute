@@ -21,7 +21,7 @@ from app.models import Trip, TripStop, User
 
 def _require(trip: Trip, *states: str) -> None:
     if trip.mode == "volunteer":
-        raise HTTPException(409, "This trip is carried by a volunteer, not a vehicle")
+        raise HTTPException(409, "This trip is carried by a driver, not a vehicle")
     if trip.handoff_state not in states:
         raise HTTPException(409, f"The vehicle is {str(trip.handoff_state).replace('_', ' ')}, not {' or '.join(s.replace('_', ' ') for s in states)}")
 

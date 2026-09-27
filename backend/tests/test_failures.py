@@ -21,7 +21,7 @@ def client(fake_clock):
 
 
 def post(client, h, **kw):
-    b = {"quantity": 2, "unit": "tray", "category": "hot", "attested": True,
+    b = {"quantity": 2, "unit": "tray", "attested": True,
          "pickup_deadline": (clock.now() + timedelta(minutes=110)).isoformat() + "Z", **kw}
     r = client.post("/rescues", json=b, headers=h)
     assert r.status_code == 200, r.text
@@ -59,7 +59,7 @@ def test_volunteer_no_show_requeues_and_notifies_restaurant(client, fake_clock):
 
 def test_food_past_safe_until_expires_and_everyone_is_told(client, fake_clock):
     h = signin(client, EMAILS["restaurant_staff"])
-    r = post(client, h, prepared_at=(clock.now() - timedelta(minutes=95)).isoformat() + "Z")  # safe 25 more minutes
+    r = post(client, h, prepared_at=(clock.now() - timedelta(minutes=215)).isoformat() + "Z")  # 4 h window: safe 25 more minutes
     assert r["trips"] and r["trips"][0]["carrier"]["first_name"] == "Marcus"
     fake_clock.advance(minutes=26)  # past safe_until and past the no-show grace: expiry wins, no re-queue
     assert jobs()["expired"] == 1
@@ -72,9 +72,9 @@ def test_food_past_safe_until_expires_and_everyone_is_told(client, fake_clock):
         assert db.query(AuditEvent).filter_by(rescue_id=r["id"], action="rescue_expired").count() == 1
 
 
-def _to_dropoff(client, category="cold"):
+def _to_dropoff(client):
     rest, vol = signin(client, EMAILS["restaurant_staff"]), signin(client, EMAILS["volunteer"])
-    r = post(client, rest, category=category, unit="bag", quantity=3)
+    r = post(client, rest, unit="bag", quantity=3)
     trip = r["trips"][0]
     client.post(f"/trips/{trip['id']}/accept", headers=vol)
     client.post(f"/trips/{trip['id']}/pickup", json={"code": r["pickup_code"], "picked_up_meals": 12}, headers=vol)

@@ -37,7 +37,7 @@ const ROLE_LINKS: Record<Role, { href: string; label: string }[]> = {
     { href: "/restaurant/dashboard", label: "Dashboard" },
     { href: "/restaurant/surplus-log", label: "Surplus log" },
   ],
-  volunteer: [{ href: "/volunteer/dashboard", label: "Dashboard" }],
+  volunteer: [{ href: "/driver/dashboard", label: "Dashboard" }],
   org_staff: [
     { href: "/organization/dashboard", label: "Dashboard" },
     { href: "/organization/onboarding", label: "Onboarding" },

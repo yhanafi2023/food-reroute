@@ -20,11 +20,11 @@ def client(fake_clock):
 
 def test_matching_rejections_show_the_intake_answers_working(client):
     h = signin(client, EMAILS["restaurant_staff"])
-    client.post("/rescues", json={"quantity": 2, "unit": "tray", "category": "hot", "attested": True,
+    client.post("/rescues", json={"quantity": 2, "unit": "tray", "attested": True,
                                   "pickup_deadline": (clock.now() + timedelta(minutes=90)).isoformat() + "Z"}, headers=h)
     admin = signin(client, EMAILS["admin"])
     rej = client.get("/analytics/matching-rejections", headers=admin).json()
-    assert rej["by_reason_group"]["no_hot_food"] == 2      # food bank and fridge said no hot food
+    assert "no_hot_food" not in rej["by_reason_group"]    # food type plays no part in matching
     assert rej["by_reason_group"]["closed"] >= 1           # food bank closed at 7 PM
     assert rej["by_reason_group"]["dietary"] == 1          # halal pantry
     cov = client.get("/analytics/coverage", headers=admin).json()

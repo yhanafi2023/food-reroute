@@ -6,7 +6,7 @@ import { useCommunityNeedAreas } from "@/lib/useCommunityNeed";
 import type { Rescue, Trip } from "@/lib/types";
 
 // The real backend never returns a routed polyline (app/dispatch.py stores only trip-cost
-// metadata, not geometry) and never returns a volunteer's live position to a restaurant or
+// metadata, not geometry) and never returns a driver's live position to a restaurant or
 // organization view (app/views.py: "Volunteers' ... home locations are never returned to
 // anyone but admins"). This draws the actual road route (OSRM) between the fixed pickup and
 // drop-off points; it does not show a moving carrier dot outside the admin network view.

@@ -6,7 +6,7 @@ import { BrandMark } from "./AppShell";
 const FLOW: { icon: IconName | "brand"; title: string; text: string; hub?: boolean }[] = [
   { icon: "restaurant", title: "Restaurant", text: "Posts safe surplus food" },
   { icon: "brand", title: "FoodFlow", text: "Matches, splits, routes", hub: true },
-  { icon: "driver", title: "Driver", text: "Volunteer picks it up" },
+  { icon: "driver", title: "Driver", text: "Picks it up and delivers" },
   { icon: "community-org", title: "Organization", text: "Food bank, shelter, pantry" },
   { icon: "community", title: "Community", text: "Families, students, seniors" },
 ];

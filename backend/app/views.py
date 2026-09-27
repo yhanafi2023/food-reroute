@@ -77,7 +77,7 @@ def rescue_json(r: Rescue, viewer: User, only_org: Optional[int] = None) -> Dict
         "restaurant": {"id": r.restaurant.id, "name": r.restaurant.name, "address": r.restaurant.address,
                        "lat": r.restaurant.lat, "lng": r.restaurant.lng},
         "quantity": r.quantity, "unit": r.unit, "est_meals": r.est_meals,
-        "meals_per_unit_assumption": r.meals_per_unit, "category": r.category, "description": r.description,
+        "meals_per_unit_assumption": r.meals_per_unit, "description": r.description,
         "prepared_at": iso(r.prepared_at), "allergens": r.allergens if r.allergens_declared else None,
         "allergens_declared": r.allergens_declared, "dietary_tags": r.dietary_tags, "safe_until": iso(r.safe_until),
         "pickup_deadline": iso(r.pickup_deadline), "pickup_instructions": r.pickup_instructions,
